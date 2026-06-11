@@ -529,6 +529,7 @@ function L.plugin_update_branch(name, branch)
 	if vim.v.shell_error ~= 0 then
 		return vim.trim(out)
 	end
+	outdated[name] = nil
 	return nil
 end
 
@@ -546,6 +547,7 @@ function L.plugin_checkout(name, ref)
 	if vim.v.shell_error ~= 0 then
 		return vim.trim(out)
 	end
+	outdated[name] = nil
 	return nil
 end
 

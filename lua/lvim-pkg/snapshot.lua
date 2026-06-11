@@ -248,6 +248,29 @@ function M.unset(kind, name)
 	end
 end
 
+--- Write a full version set to a named snapshot file in the snapshots dir (creating it).
+--- `data` is { plugins = {name = entry}, mason = {name = entry} }; used by snapshot_save
+--- to materialise the current state as a reusable snapshot.
+---@param name string
+---@param data table
+---@return boolean
+function M.write_file(name, data)
+	if not name or name == "" or name == "active" then
+		return false
+	end
+	local d = M.dir()
+	vim.fn.mkdir(d, "p")
+	data.plugins = data.plugins or {}
+	data.mason = data.mason or {}
+	local f = io.open(d .. "/" .. name, "w")
+	if not f then
+		return false
+	end
+	f:write(pretty(data))
+	f:close()
+	return true
+end
+
 --- All entries as kind → name → { version, reftype, branch } (for the installer).
 ---@return table<string, table<string, table>>
 function M.all_full()

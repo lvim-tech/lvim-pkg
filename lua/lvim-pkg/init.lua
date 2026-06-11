@@ -446,6 +446,55 @@ function M.select_snapshot(name)
 	return require("lvim-pkg.snapshot").select(name)
 end
 
+--- Capture the current state into a named snapshot file: each installed plugin's live
+--- git HEAD and each Mason package's installed version. Explicit pins from the active
+--- snapshot are carried over (kept flagged); everything else is a plain reproducibility
+--- record. Overwrites an existing file of the same name.
+---@param name string
+---@return boolean ok, string? err
+function M.snapshot_save(name)
+	if not name or name == "" then
+		return false, "snapshot name required"
+	end
+	local snap = require("lvim-pkg.snapshot")
+	local active = require("lvim-pkg.pins").all_full()
+	local data = { plugins = {}, mason = {} }
+	for _, info in ipairs(M.plugins()) do
+		local commit
+		if info.path then
+			local head = vim.trim(vim.fn.system({ "git", "-C", info.path, "rev-parse", "HEAD" }))
+			if vim.v.shell_error == 0 and head ~= "" then
+				commit = head
+			end
+		end
+		commit = commit or (info.commit ~= "" and info.commit or nil)
+		if commit then
+			local entry = { commit = commit }
+			if active.plugin[info.name] then
+				entry.pin = true
+			end
+			data.plugins[info.name] = entry
+		end
+	end
+	local ok, install = pcall(require, "lvim-pkg.install")
+	if ok then
+		for _, mname in ipairs(install.installed()) do
+			local v = M.installed_version(mname)
+			if v and v ~= "" then
+				local entry = { version = v }
+				if active.mason[mname] then
+					entry.pin = true
+				end
+				data.mason[mname] = entry
+			end
+		end
+	end
+	if not snap.write_file(name, data) then
+		return false, "could not write snapshot file"
+	end
+	return true
+end
+
 --- What restoring the active snapshot would change — only entries whose currently
 --- installed version differs from the snapshot's pinned version (latest entries are
 --- left alone). Shape: { plugins = { {name, from, to} }, mason = { {name, from, to} } }.

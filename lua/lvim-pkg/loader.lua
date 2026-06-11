@@ -238,16 +238,13 @@ function L.check_outdated(cb, on_progress)
 
 	local start_next -- forward declaration
 	local function check(t)
-		-- A plugin pinned to a commit is never "outdated" (vim.pack.update keeps it
-		-- at that commit), so skip the SHA-pinned ones.
-		if t.version and t.version:match("^%x+$") and #t.version >= 7 then
-			finish_one()
-			start_next()
-			return
-		end
 		-- Compare the installed HEAD to the remote tip of the TRACKED ref (the spec's
-		-- branch/tag), falling back to the default branch when nothing is pinned.
-		local ref = (t.version and t.version ~= "") and t.version or "HEAD"
+		-- branch/tag). A commit pin is a fixed SHA we can't ls-remote, so compare against
+		-- the default branch tip instead: this only flags that a newer upstream commit
+		-- exists (informative) — vim.pack still keeps the plugin at the pinned commit
+		-- until you explicitly update it.
+		local sha_pinned = t.version and t.version:match("^%x+$") and #t.version >= 7
+		local ref = (t.version and t.version ~= "" and not sha_pinned) and t.version or "HEAD"
 		vim.system({ "git", "-C", t.path, "ls-remote", "origin", ref }, { text = true }, function(r1)
 			local remote = (r1.stdout or ""):match("^(%x+)")
 			vim.system({ "git", "-C", t.path, "rev-parse", "HEAD" }, { text = true }, function(r2)

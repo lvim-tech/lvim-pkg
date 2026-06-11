@@ -209,6 +209,24 @@ function M.installed_version(name)
 	return nil
 end
 
+--- Available versions of a package (newest first), queried from its source. Currently
+--- only Mason packages are versioned this way (plugins use git refs, parsers have no
+--- version). Async; cb(list) or cb(nil) on failure.
+---@param kind string
+---@param name string
+---@param cb fun(list: string[]|nil)
+---@return nil
+function M.available_versions(kind, name, cb)
+	if kind ~= "mason" then
+		return cb(nil)
+	end
+	local ok, install = pcall(require, "lvim-pkg.install")
+	if not ok then
+		return cb(nil)
+	end
+	install.versions(name, cb)
+end
+
 --- Install items via the backend for `kind`.  Argument shapes are
 --- backend-specific (Mason/parser take names, plugin takes vim.pack specs).
 ---@param kind  string

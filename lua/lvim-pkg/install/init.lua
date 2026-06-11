@@ -159,4 +159,20 @@ function M.remove(name)
 	vim.fn.delete(paths.package_dir(name), "rf")
 end
 
+--- Available versions of a Mason package (newest first), queried from its source's
+--- ecosystem (npm / pypi / github / cargo / golang). Async; cb(list) or cb(nil) on any
+--- failure (the caller falls back to the registry's pinned version).
+---@param name string
+---@param cb fun(list: string[]|nil)
+---@return nil
+function M.versions(name, cb)
+	local spec = registry.get(name)
+	local id = spec and spec.source and spec.source.id
+	if not id then
+		return cb(nil)
+	end
+	local p = require("lvim-pkg.registry.purl").parse(id)
+	require("lvim-pkg.install.versions").fetch(p, cb)
+end
+
 return M

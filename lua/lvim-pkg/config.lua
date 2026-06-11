@@ -5,10 +5,13 @@
 ---@module "lvim-pkg.config"
 
 ---@class LvimPkgConfig
----@field root            string   Unified install root (subfolders: packages/ bin/ ts/)
----@field ensure_cli      boolean  Install the tree-sitter CLI on first setup when missing
----@field update_registry boolean  Silently refresh the mason + ts registry caches at setup
----@field registry_ttl    integer  Seconds before a cached registry is considered stale
+---@field root            string        Unified install root (subfolders: packages/ bin/ ts/)
+---@field ensure_cli      boolean       Install the tree-sitter CLI on first setup when missing
+---@field update_registry boolean       Silently refresh the mason + ts registry caches at setup
+---@field registry_ttl    integer       Seconds before a cached registry is considered stale
+---@field snapshot_file   string|nil    Active version snapshot (plugin + mason versions); the host
+---                                      sets this. When nil, falls back to the lvim distribution's
+---                                      <config>/.snapshots/<active> convention.
 
 ---@type LvimPkgConfig
 return {
@@ -16,4 +19,5 @@ return {
 	ensure_cli = true,
 	update_registry = true,
 	registry_ttl = 7 * 24 * 60 * 60, -- 7 days
+	snapshot_file = nil,
 }

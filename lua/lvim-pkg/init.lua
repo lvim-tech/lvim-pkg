@@ -605,10 +605,9 @@ end
 
 -- ── Registry refresh ──────────────────────────────────────────────────────────
 
---- Refresh registry catalogues. With `force` (the manual command) it ignores the TTL
---- and the update_registry gate; without it (the on-open path) it only fetches when
---- the cache is missing/stale — closing the cold-start race where a catalogue is empty
---- until its first background fetch lands.
+--- Refresh registry catalogues. With `force` (the manual command) it re-downloads now;
+--- without it (the on-open / setup path) it only fetches on first-run bootstrap when the
+--- cache is missing — there is no periodic refresh, so catalogues update only on demand.
 ---@param which? "mason"|"ts"|"all"  Default "all"
 ---@param cb? fun()
 ---@param force? boolean

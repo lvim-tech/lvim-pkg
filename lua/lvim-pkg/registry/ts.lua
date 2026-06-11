@@ -9,7 +9,6 @@
 
 local util = require("lvim-pkg.install.util")
 local paths = require("lvim-pkg.paths")
-local config = require("lvim-pkg.config")
 
 local M = {}
 
@@ -52,14 +51,6 @@ local function load_file()
 	return true
 end
 
---- True when a cached registry exists and is younger than the configured TTL.
----@return boolean
-local function fresh()
-	local stat = vim.uv.fs_stat(cache_path())
-	local ttl = config.registry_ttl or (7 * 24 * 60 * 60)
-	return stat ~= nil and (os.time() - stat.mtime.sec) < ttl
-end
-
 --- Load the registry from disk if present (synchronous, no fetch).
 ---@return boolean  loaded
 function M.load()
@@ -69,29 +60,21 @@ function M.load()
 	return load_file()
 end
 
---- Ensure the registry is available, fetching it when missing or stale (or when
---- `force` is set — used by the manual update command). A failed fetch falls back to
---- the stale on-disk copy. When auto-update is disabled and not forced, the existing
---- cache is used as-is without a fetch.
+--- Ensure the registry is available. Only fetches on first-run bootstrap (no cache on
+--- disk) or when `force` is set (the explicit :LvimInstaller update-registry command);
+--- otherwise the existing cache is used as-is — there is no periodic refresh. A failed
+--- fetch falls back to whatever copy is on disk.
 ---@param cb? fun()
----@param force? boolean  Ignore the TTL and the update_registry gate, re-fetch now
+---@param force? boolean  Re-fetch now even if a cache already exists
 ---@return nil
 function M.ensure(cb, force)
 	cb = cb or function() end
-	if cache and fresh() and not force then
-		return cb()
-	end
-	if fresh() and not force then
-		load_file()
-		return cb()
-	end
-	if not force and not config.update_registry then
-		load_file() -- auto-update off: use whatever cache exists
+	if not force and (cache or load_file()) then
 		return cb()
 	end
 	paths.ensure()
 	util.download(URL, cache_path(), function()
-		load_file() -- loads the fresh download, or the stale copy if the download failed
+		load_file() -- loads the fresh download, or the existing copy if the download failed
 		cb()
 	end)
 end

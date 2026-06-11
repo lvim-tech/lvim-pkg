@@ -9,7 +9,6 @@
 local paths = require("lvim-pkg.paths")
 local purl = require("lvim-pkg.registry.purl")
 local util = require("lvim-pkg.install.util")
-local config = require("lvim-pkg.config")
 
 local M = {}
 
@@ -54,26 +53,17 @@ function M.load(force)
 	return cache
 end
 
---- True when our cached registry.json is younger than the configured TTL.
----@return boolean
-local function fresh()
-	local stat = vim.uv.fs_stat(paths.registry_file())
-	local ttl = config.registry_ttl or (7 * 24 * 60 * 60)
-	return stat ~= nil and (os.time() - stat.mtime.sec) < ttl
-end
-
 --- Fetch the Mason registry (registry.json.zip from the latest release), extract it to
---- our own cache (root/registry.json), and reload. Skips the fetch when the cache is
---- fresh, or when auto-update is off (unless `force`). A failed fetch keeps the old copy.
+--- our own cache (root/registry.json), and reload. Only fetches on first-run bootstrap
+--- (no cache yet) or when `force` is set (the explicit :LvimInstaller update-registry
+--- command); otherwise the existing cache is used as-is — there is no periodic refresh.
+--- A failed fetch keeps the old copy.
 ---@param cb? fun()
----@param force? boolean  Ignore the TTL and the update_registry gate, re-fetch now
+---@param force? boolean  Re-fetch now even if a cache already exists
 ---@return nil
 function M.ensure(cb, force)
 	cb = cb or function() end
-	if fresh() and not force then
-		return cb()
-	end
-	if not force and not config.update_registry then
+	if not force and vim.uv.fs_stat(paths.registry_file()) then
 		return cb()
 	end
 	paths.ensure()

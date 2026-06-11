@@ -11,10 +11,16 @@
 local registry = require("lvim-pkg.registry.ts")
 local util = require("lvim-pkg.install.util")
 local paths = require("lvim-pkg.paths")
+local db = require("lvim-pkg.db")
 
 local B = { kind = "parser" }
 
 local rtp_added = false
+
+-- Receipt keys are namespaced so parser versions never collide with Mason packages.
+local RECEIPT_PREFIX = "ts:"
+-- name → true, the parsers a check found behind the registry's current version.
+local outdated = {}
 
 ---@return string  parser .so output directory
 local function parser_dir()
@@ -56,6 +62,51 @@ local function read_json(path)
 	f:close()
 	local ok, data = pcall(vim.json.decode, content)
 	return ok and data or nil
+end
+
+--- The authoritative current version string for `lang` — the same value that an install
+--- now would build at. For external_queries that is the queries repo's pinned
+--- `parser_version` (read cheaply from its raw parser.json on main); for a self-contained,
+--- main-tracked parser it is the parser repo's default-branch tip commit. `cb(version|nil)`
+--- — nil when the parser has no version concept (queries_only) or the lookup failed.
+---@param lang string
+---@param cb fun(version: string|nil)
+local function resolve_latest(lang, cb)
+	local entry = registry.get(lang)
+	local src = entry and entry.source
+	if not src or src.type == "queries_only" then
+		return cb(nil)
+	end
+	if src.queries_url then
+		-- Mirror install: the queries repo (always on main) pins the grammar revision.
+		local raw = src.queries_url:gsub("github%.com", "raw.githubusercontent.com") .. "/main/parser.json"
+		local tmp = vim.fn.tempname()
+		util.download(raw, tmp, function(err)
+			local pj = (not err) and read_json(tmp) or nil
+			vim.fn.delete(tmp)
+			cb(pj and pj.parser_version or nil)
+		end)
+	elseif src.parser_url then
+		vim.system({ "git", "ls-remote", src.parser_url, "HEAD" }, { text = true }, function(r)
+			cb((r.stdout or ""):match("^(%x+)"))
+		end)
+	else
+		cb(nil)
+	end
+end
+
+--- Record `lang`'s installed version (resolved the same way the outdated check resolves
+--- the latest), so the two are comparable. Clears any stale outdated flag. `cb()` always.
+---@param lang string
+---@param cb fun()
+local function record_installed(lang, cb)
+	resolve_latest(lang, function(version)
+		if version then
+			db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = version })
+		end
+		outdated[lang] = nil
+		cb()
+	end)
 end
 
 --- Download a GitHub repo tarball at `ref` and extract it. `cb(err, dir)` where
@@ -194,7 +245,9 @@ local function install_one(lang, cb, seen)
 						return cb("compile " .. lang .. ": " .. e3)
 					end
 					copy_queries(qdir or grammar, lang) -- self_contained: queries live in the parser repo
-					cb(nil)
+					record_installed(lang, function()
+						cb(nil)
+					end)
 				end)
 			end)
 		end
@@ -335,10 +388,99 @@ function B.remove(names, cb)
 	for _, lang in ipairs(names or {}) do
 		vim.fn.delete(parser_dir() .. "/" .. lang .. ".so")
 		vim.fn.delete(queries_dir() .. "/" .. lang, "rf")
+		db.receipt_remove(RECEIPT_PREFIX .. lang)
+		outdated[lang] = nil
 	end
 	if cb then
 		cb(nil)
 	end
+end
+
+-- ── version tracking ──────────────────────────────────────────────────────────
+
+--- The grammar revision `lang`'s installed .so was built at (from its receipt), or nil
+--- when unknown (e.g. a parser compiled before version tracking existed).
+---@param lang string
+---@return string|nil
+function B.installed_version(lang)
+	local r = db.receipt_get(RECEIPT_PREFIX .. lang)
+	return r and r.version or nil
+end
+
+--- Whether the last check found `lang` behind the registry's current version. Cached;
+--- populated by B.check_outdated.
+---@param lang string
+---@return boolean
+function B.is_outdated(lang)
+	return outdated[lang] == true
+end
+
+--- Check installed parsers against the registry's current versions, async with a small
+--- concurrency cap. Updates the cached outdated set and calls `cb(outdated_names)`.
+--- A parser with no recorded version is treated as up to date (nothing to compare).
+---@param cb? fun(names: string[])
+---@param on_progress? fun(done: integer, total: integer)
+---@return nil
+function B.check_outdated(cb, on_progress)
+	registry.ensure(function()
+		local langs = B.installed()
+		local total = #langs
+		local found = {}
+		if total == 0 then
+			outdated = {}
+			if cb then
+				cb(found)
+			end
+			return
+		end
+		local done, next_i = 0, 0
+		local limit = 8
+		local start_next
+		local function finish_one()
+			done = done + 1
+			if on_progress then
+				vim.schedule(function()
+					on_progress(done, total)
+				end)
+			end
+			if done == total and cb then
+				vim.schedule(function()
+					cb(found)
+				end)
+			end
+		end
+		local function check(lang)
+			local cur = B.installed_version(lang)
+			resolve_latest(lang, function(latest)
+				if not cur then
+					-- No recorded build revision (installed before version tracking): baseline
+					-- it to the current version so future registry bumps are detected. We can't
+					-- know the real build revision, so treat it as up to date for now.
+					if latest then
+						db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = latest })
+					end
+					outdated[lang] = nil
+				elseif latest and cur ~= latest then
+					outdated[lang] = true
+					found[#found + 1] = lang
+				else
+					outdated[lang] = nil
+				end
+				finish_one()
+				start_next()
+			end)
+		end
+		function start_next()
+			next_i = next_i + 1
+			local lang = langs[next_i]
+			if lang then
+				check(lang)
+			end
+		end
+		for _ = 1, math.min(limit, total) do
+			start_next()
+		end
+	end)
 end
 
 return B

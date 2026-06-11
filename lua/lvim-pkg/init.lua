@@ -320,6 +320,29 @@ function M.check_outdated(cb, on_progress)
 	loader.check_outdated(cb, on_progress)
 end
 
+--- The grammar revision an installed parser was built at, or nil when unknown.
+---@param lang string
+---@return string|nil
+function M.parser_installed_version(lang)
+	return backends.parser.installed_version(lang)
+end
+
+--- Whether the last parser check found `lang` behind the registry's current version.
+---@param lang string
+---@return boolean
+function M.parser_outdated(lang)
+	return backends.parser.is_outdated(lang)
+end
+
+--- Asynchronously check which installed parsers are behind the registry's current
+--- versions (the parser equivalent of check_outdated).
+---@param cb? fun(outdated_names: string[])
+---@param on_progress? fun(done: integer, total: integer)
+---@return nil
+function M.check_parsers_outdated(cb, on_progress)
+	backends.parser.check_outdated(cb, on_progress)
+end
+
 --- Asynchronously read git tags for plugins (commit/branch are cheap; tag needs git).
 ---@param cb? fun()
 ---@return nil

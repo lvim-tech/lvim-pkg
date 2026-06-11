@@ -156,21 +156,24 @@ local function write(data)
 	return true
 end
 
---- Normalize a raw entry to { version, reftype, branch }.
+--- Normalize a raw entry to { version, reftype, branch, pinned }. `pinned` is true only
+--- when the entry was written by an explicit user pin (entry.pin == true); plain commits
+--- recorded for reproducibility (e.g. a lazy-lock-style snapshot) are not pins.
 ---@param entry table|nil
----@return { version: string, reftype: string, branch: string|nil }|nil
+---@return { version: string, reftype: string, branch: string|nil, pinned: boolean }|nil
 local function normalize(entry)
 	if type(entry) ~= "table" then
 		return nil
 	end
+	local pinned = entry.pin == true
 	if entry.commit then
-		return { version = entry.commit, reftype = "commit", branch = entry.branch }
+		return { version = entry.commit, reftype = "commit", branch = entry.branch, pinned = pinned }
 	elseif entry.tag then
-		return { version = entry.tag, reftype = "tag", branch = entry.branch }
+		return { version = entry.tag, reftype = "tag", branch = entry.branch, pinned = pinned }
 	elseif entry.branch then
-		return { version = entry.branch, reftype = "branch" }
+		return { version = entry.branch, reftype = "branch", pinned = pinned }
 	elseif entry.version then
-		return { version = entry.version, reftype = "version" }
+		return { version = entry.version, reftype = "version", pinned = pinned }
 	end
 	return nil
 end
@@ -201,14 +204,17 @@ function M.get_full(kind, name)
 end
 
 --- Pin `name` to `version` in the active snapshot. reftype ∈ commit|tag|branch|version
---- (defaults: "version" for mason, "commit" for plugins).
+--- (defaults: "version" for mason, "commit" for plugins). `explicit` records an explicit
+--- user pin (entry.pin == true), which is what the installer markers reflect; reproducibility
+--- writes leave it false so the recorded commit alone does not count as a pin.
 ---@param kind string
 ---@param name string
 ---@param version string
 ---@param reftype? string
 ---@param branch? string
+---@param explicit? boolean
 ---@return nil
-function M.set(kind, name, version, reftype, branch)
+function M.set(kind, name, version, reftype, branch, explicit)
 	local sec = SECTION[kind]
 	if not sec or not version or version == "" then
 		return
@@ -217,6 +223,9 @@ function M.set(kind, name, version, reftype, branch)
 	local entry = { [reftype] = version }
 	if branch and branch ~= "" then
 		entry.branch = branch
+	end
+	if explicit then
+		entry.pin = true
 	end
 	local data = read()
 	data[sec][name] = entry

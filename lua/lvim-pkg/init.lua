@@ -425,6 +425,85 @@ function M.pins()
 	return pins.all()
 end
 
+-- ── snapshots (switchable version sets) ───────────────────────────────────────
+
+--- Available snapshot names.
+---@return string[]
+function M.snapshots()
+	return require("lvim-pkg.snapshot").list()
+end
+
+--- The active snapshot name.
+---@return string
+function M.active_snapshot()
+	return require("lvim-pkg.snapshot").active()
+end
+
+--- Make `name` the active snapshot (switches the whole version set).
+---@param name string
+---@return boolean
+function M.select_snapshot(name)
+	return require("lvim-pkg.snapshot").select(name)
+end
+
+--- What restoring the active snapshot would change — only entries whose currently
+--- installed version differs from the snapshot's pinned version (latest entries are
+--- left alone). Shape: { plugins = { {name, from, to} }, mason = { {name, from, to} } }.
+---@return { plugins: table[], mason: table[] }
+function M.snapshot_diff()
+	local snap = require("lvim-pkg.snapshot")
+	local out = { plugins = {}, mason = {} }
+	for _, info in ipairs(M.plugins()) do
+		local to = snap.get("plugin", info.name)
+		local cur = info.commit
+		if to and to ~= "" and cur and cur ~= "" and not vim.startswith(to, cur) and not vim.startswith(cur, to) then
+			out.plugins[#out.plugins + 1] = { name = info.name, from = cur, to = to }
+		end
+	end
+	local ok, install = pcall(require, "lvim-pkg.install")
+	if ok then
+		for _, name in ipairs(install.installed()) do
+			local to = snap.get("mason", name)
+			local cur = M.installed_version(name)
+			if to and to ~= "" and to ~= cur then
+				out.mason[#out.mason + 1] = { name = name, from = cur, to = to }
+			end
+		end
+	end
+	return out
+end
+
+--- Apply a snapshot diff: check out the pinned commit for each changed plugin (the
+--- running Lua keeps the old code until a restart) and reinstall each changed Mason
+--- package at its pinned version. `on_progress(kind, name, action)` is optional.
+---@param diff { plugins: table[], mason: table[] }
+---@param cb? fun()
+---@param on_progress? fun(kind: string, name: string, action: string)
+---@return nil
+function M.snapshot_restore(diff, cb, on_progress)
+	cb = cb or function() end
+	for _, p in ipairs(diff.plugins or {}) do
+		if on_progress then
+			on_progress("plugin", p.name, "checkout")
+		end
+		M.plugin_checkout(p.name, p.to)
+	end
+	local names = {}
+	for _, m in ipairs(diff.mason or {}) do
+		names[#names + 1] = m.name
+	end
+	if #names == 0 then
+		return cb()
+	end
+	M.install("mason", names, function()
+		cb()
+	end, {
+		on_progress = on_progress and function(name, _, action)
+			on_progress("mason", name, action)
+		end or nil,
+	})
+end
+
 -- ── Declines (per-filetype "do not offer these packages again") ───────────────
 
 --- Decline `names` for filetype `ft`: the unified prompt stops offering them and

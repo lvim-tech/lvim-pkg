@@ -17,18 +17,64 @@ local M = {}
 -- Map a backend "kind" to a snapshot section. Parsers have no version → no section.
 local SECTION = { plugin = "plugins", plugins = "plugins", mason = "mason" }
 
---- Absolute path of the active snapshot file, or nil when none is configured.
----@return string|nil
+--- The snapshots directory (holds the snapshot files + the `active` marker).
+---@return string
+function M.dir()
+	if type(config.snapshot_dir) == "string" and config.snapshot_dir ~= "" then
+		return config.snapshot_dir
+	end
+	return vim.fn.stdpath("config") .. "/.snapshots"
+end
+
+--- Name of the active snapshot (from <dir>/active), defaulting to "default".
+---@return string
+function M.active()
+	local f = io.open(M.dir() .. "/active", "r")
+	if f then
+		local name = vim.trim(f:read("*a") or "")
+		f:close()
+		if name ~= "" then
+			return name
+		end
+	end
+	return "default"
+end
+
+--- Available snapshot names (every file in the dir except the `active` marker).
+---@return string[]
+function M.list()
+	local out = {}
+	local d = M.dir()
+	if vim.fn.isdirectory(d) == 1 then
+		for name, t in vim.fs.dir(d) do
+			if t == "file" and name ~= "active" then
+				out[#out + 1] = name
+			end
+		end
+	end
+	table.sort(out)
+	return out
+end
+
+--- Set the active snapshot (writes <dir>/active). Switches the whole version set.
+---@param name string
+---@return boolean
+function M.select(name)
+	local d = M.dir()
+	vim.fn.mkdir(d, "p")
+	local f = io.open(d .. "/active", "w")
+	if not f then
+		return false
+	end
+	f:write(name)
+	f:close()
+	return true
+end
+
+--- Absolute path of the active snapshot file.
+---@return string
 local function path()
-	if type(config.snapshot_file) == "string" and config.snapshot_file ~= "" then
-		return config.snapshot_file
-	end
-	-- Fall back to the host's convention (lvim distribution): <config>/.snapshots/<active>.
-	local g = _G.LVIM
-	if g and g.global and g.global.lvim_path and g.snapshot then
-		return g.global.lvim_path .. "/.snapshots/" .. g.snapshot
-	end
-	return nil
+	return M.dir() .. "/" .. M.active()
 end
 
 --- Read the active snapshot, normalized to { plugins = {…}, mason = {…} }.

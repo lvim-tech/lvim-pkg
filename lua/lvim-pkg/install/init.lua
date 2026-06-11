@@ -106,10 +106,12 @@ function M.install(name, opts, cb)
 	end
 	---@cast p table -- guaranteed non-nil: `handler` is only set when `p` is a table
 
-	-- Apply a version/commit pin, if any, by overriding the registry default.
-	local pinned = require("lvim-pkg.pins").get("mason", name)
-	if pinned and pinned ~= "" then
-		p = vim.tbl_extend("force", p, { version = pinned })
+	-- Honour the active snapshot's recorded version (the full set, not just explicit
+	-- pins), so a reproducibility record installs that exact version. Falls back to the
+	-- registry default when the snapshot tracks latest (no entry).
+	local recorded = require("lvim-pkg.snapshot").get("mason", name)
+	if recorded and recorded ~= "" then
+		p = vim.tbl_extend("force", p, { version = recorded })
 	end
 
 	paths.ensure()

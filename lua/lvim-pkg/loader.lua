@@ -26,6 +26,8 @@ local GITHUB = "https://github.com/"
 ---@field keys? any
 ---@field dependencies? string[]
 ---@field priority? integer
+---@field dependency? boolean  True when pulled in only as another plugin's dependency
+---@field dep_of? string       The plugin that required it (when `dependency`)
 
 ---@type table<string, LvimPkgPluginReg>  name → static spec info
 local registry = {}
@@ -149,6 +151,8 @@ function L.info(name)
 		triggers = triggers_of(reg),
 		dependencies = reg.dependencies or {},
 		priority = reg.priority,
+		dependency = reg.dependency == true,
+		dep_of = reg.dep_of,
 		outdated = outdated[name] == true,
 	}
 end

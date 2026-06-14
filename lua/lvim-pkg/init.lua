@@ -98,6 +98,13 @@ function M.package_path(name)
     return require("lvim-pkg.paths").package_dir(name)
 end
 
+--- The managed bin directory holding linked tool executables (added to PATH). Consumers
+--- (e.g. lvim-ls) resolve a tool's binary here instead of assuming the Mason layout.
+---@return string
+function M.bin_dir()
+    return require("lvim-pkg.paths").bin()
+end
+
 --- Plugin pin-menu git data (cascading: tags by branch, commits by ref).
 ---@param name string
 ---@return string[]

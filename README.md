@@ -114,6 +114,7 @@ pkg.available_versions(kind, name, cb) -- async; cb(string[]|nil) (Mason only)
 pkg.parser_installed_version(lang) -- string|nil (grammar revision)
 pkg.is_managed(name) -- installed in OUR path (vs legacy mason.nvim)
 pkg.package_path(name) -- install dir (ours, else legacy mason)
+pkg.bin_dir() -- managed bin dir (linked executables, on PATH)
 ```
 
 ### Requirement registry (filetype-driven prompt)

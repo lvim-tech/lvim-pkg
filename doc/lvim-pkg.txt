@@ -136,6 +136,7 @@ VERSIONS                                            *lvim-pkg-api-versions*
   pkg.parser_installed_version(lang)      string|nil (grammar revision)
   pkg.is_managed(name)                    installed in OUR path vs legacy mason
   pkg.package_path(name)                  install dir (ours, else legacy mason)
+  pkg.bin_dir()                           managed bin dir (linked exes, on PATH)
 
 ------------------------------------------------------------------------------
 REQUIREMENT REGISTRY                            *lvim-pkg-api-requirements*

@@ -1,8 +1,11 @@
 -- lvim-pkg: tree-sitter CLI bootstrap.
--- The nvim-treesitter rewrite compiles parsers locally and needs the
--- `tree-sitter` CLI on PATH.  When it is missing we install the Mason
--- `tree-sitter-cli` package directly (Mason prepends its bin dir to PATH), then
--- continue.
+-- The treesitter backend compiles parsers locally and needs the `tree-sitter`
+-- CLI on PATH.  When it is missing we install the `tree-sitter-cli` package
+-- through OUR OWN Mason backend — which resolves it from the mason-registry
+-- CATALOGUE lvim-pkg fetches itself and installs via lvim-pkg.install.  We never
+-- touch mason.nvim's runtime (`require("mason-registry")`), so there is no
+-- dependency on the mason.nvim plugin.  Our bin/ is already on PATH
+-- (paths.ensure_path), so the freshly linked binary resolves after the install.
 --
 ---@module "lvim-pkg.core.cli"
 
@@ -16,19 +19,17 @@ function M.ensure(cb)
     if vim.fn.executable("tree-sitter") == 1 then
         return cb()
     end
-    local ok, registry = pcall(require, "mason-registry")
+    local ok, mason = pcall(require, "lvim-pkg.backends.mason")
     if not ok then
         return cb()
     end
-    local pok, pkg = pcall(registry.get_package, "tree-sitter-cli")
-    if not pok then
+    -- Already installed into our own path (perhaps not yet resolvable this session).
+    if mason.is_installed("tree-sitter-cli") then
         return cb()
     end
-    if pkg:is_installed() then
-        return cb()
-    end
-    local handle = pkg:install()
-    handle:once("closed", vim.schedule_wrap(cb))
+    mason.install({ "tree-sitter-cli" }, function()
+        cb()
+    end)
 end
 
 return M

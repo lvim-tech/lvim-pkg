@@ -20,24 +20,24 @@ local M = {}
 ---@param ft string
 ---@return LvimPkgItem[]
 function M.missing_for_ft(ft)
-	local pkg = require("lvim-pkg")
-	local declined = db.declines_for_ft(ft)
-	local seen = {}
-	local out = {}
-	for _, provider in pairs(state.providers) do
-		local ok, items = pcall(provider, ft)
-		if ok and type(items) == "table" then
-			for _, item in ipairs(items) do
-				local key = item.kind .. "\0" .. item.name
-				if not seen[key] and not declined[item.name] and not pkg.is_installed(item.kind, item.name) then
-					seen[key] = true
-					item.label = item.label or item.name
-					out[#out + 1] = item
-				end
-			end
-		end
-	end
-	return out
+    local pkg = require("lvim-pkg")
+    local declined = db.declines_for_ft(ft)
+    local seen = {}
+    local out = {}
+    for _, provider in pairs(state.providers) do
+        local ok, items = pcall(provider, ft)
+        if ok and type(items) == "table" then
+            for _, item in ipairs(items) do
+                local key = item.kind .. "\0" .. item.name
+                if not seen[key] and not declined[item.name] and not pkg.is_installed(item.kind, item.name) then
+                    seen[key] = true
+                    item.label = item.label or item.name
+                    out[#out + 1] = item
+                end
+            end
+        end
+    end
+    return out
 end
 
 return M

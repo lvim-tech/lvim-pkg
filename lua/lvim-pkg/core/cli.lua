@@ -13,22 +13,22 @@ local M = {}
 --- so already-compiled parsers keep working.
 ---@param cb fun()
 function M.ensure(cb)
-	if vim.fn.executable("tree-sitter") == 1 then
-		return cb()
-	end
-	local ok, registry = pcall(require, "mason-registry")
-	if not ok then
-		return cb()
-	end
-	local pok, pkg = pcall(registry.get_package, "tree-sitter-cli")
-	if not pok then
-		return cb()
-	end
-	if pkg:is_installed() then
-		return cb()
-	end
-	local handle = pkg:install()
-	handle:once("closed", vim.schedule_wrap(cb))
+    if vim.fn.executable("tree-sitter") == 1 then
+        return cb()
+    end
+    local ok, registry = pcall(require, "mason-registry")
+    if not ok then
+        return cb()
+    end
+    local pok, pkg = pcall(registry.get_package, "tree-sitter-cli")
+    if not pok then
+        return cb()
+    end
+    if pkg:is_installed() then
+        return cb()
+    end
+    local handle = pkg:install()
+    handle:once("closed", vim.schedule_wrap(cb))
 end
 
 return M

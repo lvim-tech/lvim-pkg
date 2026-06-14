@@ -13,7 +13,7 @@
 
 ---@type LvimPkgConfig
 return {
-	root = vim.fn.stdpath("data") .. "/lvim-pkgs",
-	ensure_cli = true,
-	snapshot_dir = nil,
+    root = vim.fn.stdpath("data") .. "/lvim-pkgs",
+    ensure_cli = true,
+    snapshot_dir = nil,
 }

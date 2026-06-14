@@ -26,19 +26,19 @@ local M = {}
 ---@param dep string|table
 ---@return string|nil repo, table spec
 local function normalize(dep)
-	if type(dep) == "string" then
-		return dep, {}
-	end
-	if type(dep) == "table" and type(dep[1]) == "string" then
-		local spec = {}
-		for k, v in pairs(dep) do
-			if k ~= 1 then
-				spec[k] = v
-			end
-		end
-		return dep[1], spec
-	end
-	return nil, {}
+    if type(dep) == "string" then
+        return dep, {}
+    end
+    if type(dep) == "table" and type(dep[1]) == "string" then
+        local spec = {}
+        for k, v in pairs(dep) do
+            if k ~= 1 then
+                spec[k] = v
+            end
+        end
+        return dep[1], spec
+    end
+    return nil, {}
 end
 
 --- Expand every spec's `dependencies` into top-level module entries (recursively).
@@ -46,47 +46,47 @@ end
 ---@param modules table<string, table>
 ---@return table<string, table>
 function M.resolve(modules)
-	local seen = {}
+    local seen = {}
 
-	local function visit(repo, spec)
-		if seen[repo] then
-			return
-		end
-		seen[repo] = true
-		local deps = spec.dependencies
-		if type(deps) ~= "table" or #deps == 0 then
-			return
-		end
-		-- Normalize spec.dependencies to a flat list of repo strings, so the loader's
-		-- existing `dep:match("([^/]+)$")` load-order walk keeps working.
-		local names = {}
-		for _, dep in ipairs(deps) do
-			local drepo, dspec = normalize(dep)
-			if drepo then
-				names[#names + 1] = drepo
-				if not modules[drepo] then
-					-- Pulled in only as a dependency: register it so vim.pack installs it.
-					dspec.dependency = true
-					dspec.dep_of = repo
-					modules[drepo] = dspec
-				end
-				visit(drepo, modules[drepo]) -- recurse (its own deps); seen-guarded
-			end
-		end
-		spec.dependencies = names
-	end
+    local function visit(repo, spec)
+        if seen[repo] then
+            return
+        end
+        seen[repo] = true
+        local deps = spec.dependencies
+        if type(deps) ~= "table" or #deps == 0 then
+            return
+        end
+        -- Normalize spec.dependencies to a flat list of repo strings, so the loader's
+        -- existing `dep:match("([^/]+)$")` load-order walk keeps working.
+        local names = {}
+        for _, dep in ipairs(deps) do
+            local drepo, dspec = normalize(dep)
+            if drepo then
+                names[#names + 1] = drepo
+                if not modules[drepo] then
+                    -- Pulled in only as a dependency: register it so vim.pack installs it.
+                    dspec.dependency = true
+                    dspec.dep_of = repo
+                    modules[drepo] = dspec
+                end
+                visit(drepo, modules[drepo]) -- recurse (its own deps); seen-guarded
+            end
+        end
+        spec.dependencies = names
+    end
 
-	-- Snapshot the original keys first; visit() inserts new ones as it goes.
-	local roots = {}
-	for repo, spec in pairs(modules) do
-		if type(spec) == "table" then
-			roots[#roots + 1] = repo
-		end
-	end
-	for _, repo in ipairs(roots) do
-		visit(repo, modules[repo])
-	end
-	return modules
+    -- Snapshot the original keys first; visit() inserts new ones as it goes.
+    local roots = {}
+    for repo, spec in pairs(modules) do
+        if type(spec) == "table" then
+            roots[#roots + 1] = repo
+        end
+    end
+    for _, repo in ipairs(roots) do
+        visit(repo, modules[repo])
+    end
+    return modules
 end
 
 return M

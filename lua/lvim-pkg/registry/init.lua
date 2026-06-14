@@ -24,33 +24,33 @@ local bin_index = nil
 --- Candidate registry index locations, in priority order.
 ---@return string[]
 local function candidates()
-	return {
-		paths.registry_file(),
-		vim.fn.stdpath("data") .. "/mason/registries/github/mason-org/mason-registry/registry.json",
-	}
+    return {
+        paths.registry_file(),
+        vim.fn.stdpath("data") .. "/mason/registries/github/mason-org/mason-registry/registry.json",
+    }
 end
 
 --- Load and cache the registry array (empty table when no index is found).
 ---@param force? boolean  Re-read from disk
 ---@return table[]
 function M.load(force)
-	if cache and not force then
-		return cache
-	end
-	cache, index, bin_index = {}, nil, nil
-	for _, path in ipairs(candidates()) do
-		local f = io.open(path, "r")
-		if f then
-			local content = f:read("*a")
-			f:close()
-			local ok, data = pcall(vim.json.decode, content)
-			if ok and type(data) == "table" then
-				cache = data
-				break
-			end
-		end
-	end
-	return cache
+    if cache and not force then
+        return cache
+    end
+    cache, index, bin_index = {}, nil, nil
+    for _, path in ipairs(candidates()) do
+        local f = io.open(path, "r")
+        if f then
+            local content = f:read("*a")
+            f:close()
+            local ok, data = pcall(vim.json.decode, content)
+            if ok and type(data) == "table" then
+                cache = data
+                break
+            end
+        end
+    end
+    return cache
 end
 
 --- Fetch the Mason registry (registry.json.zip from the latest release), extract it to
@@ -62,57 +62,57 @@ end
 ---@param force? boolean  Re-fetch now even if a cache already exists
 ---@return nil
 function M.ensure(cb, force)
-	cb = cb or function() end
-	if not force and vim.uv.fs_stat(paths.registry_file()) then
-		return cb()
-	end
-	paths.ensure()
-	local tmp = vim.fn.tempname()
-	vim.fn.mkdir(tmp, "p")
-	local zip = tmp .. "/registry.json.zip"
-	util.download(URL, zip, function(err)
-		if err then
-			return cb() -- keep the existing cache
-		end
-		util.extract(zip, tmp, function(e2)
-			if not e2 and vim.fn.filereadable(tmp .. "/registry.json") == 1 then
-				pcall(vim.uv.fs_copyfile, tmp .. "/registry.json", paths.registry_file())
-				M.load(true) -- reload from the fresh cache
-			end
-			cb()
-		end)
-	end)
+    cb = cb or function() end
+    if not force and vim.uv.fs_stat(paths.registry_file()) then
+        return cb()
+    end
+    paths.ensure()
+    local tmp = vim.fn.tempname()
+    vim.fn.mkdir(tmp, "p")
+    local zip = tmp .. "/registry.json.zip"
+    util.download(URL, zip, function(err)
+        if err then
+            return cb() -- keep the existing cache
+        end
+        util.extract(zip, tmp, function(e2)
+            if not e2 and vim.fn.filereadable(tmp .. "/registry.json") == 1 then
+                pcall(vim.uv.fs_copyfile, tmp .. "/registry.json", paths.registry_file())
+                M.load(true) -- reload from the fresh cache
+            end
+            cb()
+        end)
+    end)
 end
 
 --- All package specs.
 ---@return table[]
 function M.all()
-	return M.load()
+    return M.load()
 end
 
 --- Every package name in the registry.
 ---@return string[]
 function M.names()
-	local names = {}
-	for _, p in ipairs(M.load()) do
-		names[#names + 1] = p.name
-	end
-	return names
+    local names = {}
+    for _, p in ipairs(M.load()) do
+        names[#names + 1] = p.name
+    end
+    return names
 end
 
 --- Look up a package spec by name.
 ---@param name string
 ---@return table|nil
 function M.get(name)
-	if not index then
-		-- Load first: M.load() resets `index`, so build the map afterwards.
-		local all = M.load()
-		index = {}
-		for _, p in ipairs(all) do
-			index[p.name] = p
-		end
-	end
-	return index[name]
+    if not index then
+        -- Load first: M.load() resets `index`, so build the map afterwards.
+        local all = M.load()
+        index = {}
+        for _, p in ipairs(all) do
+            index[p.name] = p
+        end
+    end
+    return index[name]
 end
 
 --- Resolve a dependency name to its registry package name.
@@ -121,31 +121,31 @@ end
 ---@param dep string
 ---@return string
 function M.resolve(dep)
-	if M.get(dep) then
-		return dep
-	end
-	if not bin_index then
-		bin_index = {}
-		for _, p in ipairs(M.load()) do
-			for binname in pairs(p.bin or {}) do
-				if not bin_index[binname] then
-					bin_index[binname] = p.name
-				end
-			end
-		end
-	end
-	return bin_index[dep] or dep
+    if M.get(dep) then
+        return dep
+    end
+    if not bin_index then
+        bin_index = {}
+        for _, p in ipairs(M.load()) do
+            for binname in pairs(p.bin or {}) do
+                if not bin_index[binname] then
+                    bin_index[binname] = p.name
+                end
+            end
+        end
+    end
+    return bin_index[dep] or dep
 end
 
 --- Parsed purl for a package's source id.
 ---@param name string
 ---@return LvimPkgPurl|nil
 function M.source(name)
-	local spec = M.get(name)
-	if not spec or not spec.source then
-		return nil
-	end
-	return purl.parse(spec.source.id)
+    local spec = M.get(name)
+    if not spec or not spec.source then
+        return nil
+    end
+    return purl.parse(spec.source.id)
 end
 
 return M

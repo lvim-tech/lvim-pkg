@@ -21,43 +21,43 @@ local ft_index = nil
 
 ---@return string
 local function cache_path()
-	return paths.root() .. "/ts-registry.json"
+    return paths.root() .. "/ts-registry.json"
 end
 
 --- Decode the on-disk registry into the in-memory caches. Returns success.
 ---@return boolean
 local function load_file()
-	local f = io.open(cache_path(), "r")
-	if not f then
-		return false
-	end
-	local content = f:read("*a")
-	f:close()
-	local ok, data = pcall(vim.json.decode, content)
-	if not (ok and type(data) == "table") then
-		return false
-	end
-	cache = {}
-	ft_index = {}
-	-- Keep only real parser entries (skip metadata keys like "$schema").
-	for lang, entry in pairs(data) do
-		if type(entry) == "table" and type(entry.source) == "table" then
-			cache[lang] = entry
-			for _, ft in ipairs(entry.filetypes or {}) do
-				ft_index[ft] = ft_index[ft] or lang
-			end
-		end
-	end
-	return true
+    local f = io.open(cache_path(), "r")
+    if not f then
+        return false
+    end
+    local content = f:read("*a")
+    f:close()
+    local ok, data = pcall(vim.json.decode, content)
+    if not (ok and type(data) == "table") then
+        return false
+    end
+    cache = {}
+    ft_index = {}
+    -- Keep only real parser entries (skip metadata keys like "$schema").
+    for lang, entry in pairs(data) do
+        if type(entry) == "table" and type(entry.source) == "table" then
+            cache[lang] = entry
+            for _, ft in ipairs(entry.filetypes or {}) do
+                ft_index[ft] = ft_index[ft] or lang
+            end
+        end
+    end
+    return true
 end
 
 --- Load the registry from disk if present (synchronous, no fetch).
 ---@return boolean  loaded
 function M.load()
-	if cache then
-		return true
-	end
-	return load_file()
+    if cache then
+        return true
+    end
+    return load_file()
 end
 
 --- Ensure the registry is available. Only fetches on first-run bootstrap (no cache on
@@ -68,43 +68,43 @@ end
 ---@param force? boolean  Re-fetch now even if a cache already exists
 ---@return nil
 function M.ensure(cb, force)
-	cb = cb or function() end
-	if not force and (cache or load_file()) then
-		return cb()
-	end
-	paths.ensure()
-	util.download(URL, cache_path(), function()
-		load_file() -- loads the fresh download, or the existing copy if the download failed
-		cb()
-	end)
+    cb = cb or function() end
+    if not force and (cache or load_file()) then
+        return cb()
+    end
+    paths.ensure()
+    util.download(URL, cache_path(), function()
+        load_file() -- loads the fresh download, or the existing copy if the download failed
+        cb()
+    end)
 end
 
 --- Every language name in the registry.
 ---@return string[]
 function M.names()
-	M.load()
-	local out = {}
-	for lang in pairs(cache or {}) do
-		out[#out + 1] = lang
-	end
-	table.sort(out)
-	return out
+    M.load()
+    local out = {}
+    for lang in pairs(cache or {}) do
+        out[#out + 1] = lang
+    end
+    table.sort(out)
+    return out
 end
 
 --- The registry entry for a language, or nil.
 ---@param lang string
 ---@return table|nil
 function M.get(lang)
-	M.load()
-	return (cache or {})[lang]
+    M.load()
+    return (cache or {})[lang]
 end
 
 --- Resolve a filetype to its parser language (falls back to the filetype itself).
 ---@param ft string
 ---@return string
 function M.lang_for_ft(ft)
-	M.load()
-	return (ft_index or {})[ft] or ft
+    M.load()
+    return (ft_index or {})[ft] or ft
 end
 
 return M

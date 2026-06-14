@@ -12,12 +12,12 @@ local M = {}
 ---@param s string|nil
 ---@return string|nil
 local function decode(s)
-	if type(s) ~= "string" then
-		return s
-	end
-	return (s:gsub("%%(%x%x)", function(h)
-		return string.char(tonumber(h, 16))
-	end))
+    if type(s) ~= "string" then
+        return s
+    end
+    return (s:gsub("%%(%x%x)", function(h)
+        return string.char(tonumber(h, 16))
+    end))
 end
 
 ---@class LvimPkgPurl
@@ -31,26 +31,26 @@ end
 ---@param id string  e.g. "pkg:github/owner/repo@v1.2.3"
 ---@return LvimPkgPurl|nil
 function M.parse(id)
-	if type(id) ~= "string" then
-		return nil
-	end
-	local body = id:gsub("^pkg:", "")
-	local typ, rest = body:match("^([^/]+)/(.+)$")
-	if not typ then
-		return nil
-	end
-	-- The subpath (#frag) is the command package inside a module (e.g. golang "cmd/dlv").
-	local subpath = rest:match("#(.+)$")
-	-- Strip qualifiers / subpath (?a=b or #frag) before reading the version.
-	rest = rest:gsub("[?#].*$", "")
-	local name, version = rest, nil
-	-- The version separator is the last '@' (scoped npm names start with '@').
-	local at = rest:find("@[^@/]*$")
-	if at and at > 1 then
-		name = rest:sub(1, at - 1)
-		version = rest:sub(at + 1)
-	end
-	return { type = typ, name = decode(name), version = decode(version), subpath = decode(subpath) }
+    if type(id) ~= "string" then
+        return nil
+    end
+    local body = id:gsub("^pkg:", "")
+    local typ, rest = body:match("^([^/]+)/(.+)$")
+    if not typ then
+        return nil
+    end
+    -- The subpath (#frag) is the command package inside a module (e.g. golang "cmd/dlv").
+    local subpath = rest:match("#(.+)$")
+    -- Strip qualifiers / subpath (?a=b or #frag) before reading the version.
+    rest = rest:gsub("[?#].*$", "")
+    local name, version = rest, nil
+    -- The version separator is the last '@' (scoped npm names start with '@').
+    local at = rest:find("@[^@/]*$")
+    if at and at > 1 then
+        name = rest:sub(1, at - 1)
+        version = rest:sub(at + 1)
+    end
+    return { type = typ, name = decode(name), version = decode(version), subpath = decode(subpath) }
 end
 
 return M

@@ -47,29 +47,29 @@ local lock_revs = nil
 --- Read commit revisions from the vim.pack lockfile (cached, one file read).
 ---@return table<string, string>
 local function lockfile_revs()
-	if lock_revs then
-		return lock_revs
-	end
-	lock_revs = {}
-	local path = vim.fn.stdpath("config") .. "/nvim-pack-lock.json"
-	local ok, data = pcall(function()
-		return vim.json.decode(table.concat(vim.fn.readfile(path), "\n"))
-	end)
-	if ok and type(data) == "table" and type(data.plugins) == "table" then
-		for name, plug in pairs(data.plugins) do
-			if type(plug) == "table" and plug.rev then
-				lock_revs[name] = plug.rev
-			end
-		end
-	end
-	return lock_revs
+    if lock_revs then
+        return lock_revs
+    end
+    lock_revs = {}
+    local path = vim.fn.stdpath("config") .. "/nvim-pack-lock.json"
+    local ok, data = pcall(function()
+        return vim.json.decode(table.concat(vim.fn.readfile(path), "\n"))
+    end)
+    if ok and type(data) == "table" and type(data.plugins) == "table" then
+        for name, plug in pairs(data.plugins) do
+            if type(plug) == "table" and plug.rev then
+                lock_revs[name] = plug.rev
+            end
+        end
+    end
+    return lock_revs
 end
 
 --- Register the full plugin set (static spec info). Called once by the host loader.
 ---@param map table<string, LvimPkgPluginReg>
 ---@return nil
 function L.register(map)
-	registry = map or {}
+    registry = map or {}
 end
 
 --- Drop a plugin from the data store (after it has been removed from disk), so the
@@ -77,12 +77,12 @@ end
 ---@param name string
 ---@return nil
 function L.unregister(name)
-	registry[name] = nil
-	records[name] = nil
-	outdated[name] = nil
-	tags[name] = nil
-	branches[name] = nil
-	git_log[name] = nil
+    registry[name] = nil
+    records[name] = nil
+    outdated[name] = nil
+    tags[name] = nil
+    branches[name] = nil
+    git_log[name] = nil
 end
 
 --- Record that a plugin finished loading. Called by the host loader on each load.
@@ -91,37 +91,37 @@ end
 ---@param time_ms number
 ---@return nil
 function L.record(name, reason, time_ms)
-	records[name] = { reason = reason, time_ms = time_ms }
+    records[name] = { reason = reason, time_ms = time_ms }
 end
 
 --- Normalize a trigger field (string | list | nil) to a string list.
 ---@param v any
 ---@return table
 local function aslist(v)
-	if v == nil then
-		return {}
-	end
-	return type(v) == "table" and v or { v }
+    if v == nil then
+        return {}
+    end
+    return type(v) == "table" and v or { v }
 end
 
 --- Build the human-readable lazy-load trigger list from a registry entry.
 ---@param reg LvimPkgPluginReg
 ---@return string[]
 local function triggers_of(reg)
-	local out = {}
-	for _, e in ipairs(aslist(reg.event)) do
-		out[#out + 1] = "event: " .. tostring(e)
-	end
-	for _, e in ipairs(aslist(reg.ft)) do
-		out[#out + 1] = "ft: " .. tostring(e)
-	end
-	for _, e in ipairs(aslist(reg.cmd)) do
-		out[#out + 1] = "cmd: " .. tostring(e)
-	end
-	for _, e in ipairs(aslist(reg.keys)) do
-		out[#out + 1] = "keys: " .. (type(e) == "table" and tostring(e[1]) or tostring(e))
-	end
-	return out
+    local out = {}
+    for _, e in ipairs(aslist(reg.event)) do
+        out[#out + 1] = "event: " .. tostring(e)
+    end
+    for _, e in ipairs(aslist(reg.ft)) do
+        out[#out + 1] = "ft: " .. tostring(e)
+    end
+    for _, e in ipairs(aslist(reg.cmd)) do
+        out[#out + 1] = "cmd: " .. tostring(e)
+    end
+    for _, e in ipairs(aslist(reg.keys)) do
+        out[#out + 1] = "keys: " .. (type(e) == "table" and tostring(e[1]) or tostring(e))
+    end
+    return out
 end
 
 --- Rich info for one plugin, or nil when unknown. Uses only the data reported by
@@ -129,67 +129,67 @@ end
 ---@param name string
 ---@return table|nil
 function L.info(name)
-	local reg = registry[name]
-	if not reg then
-		return nil
-	end
-	local rec = records[name]
-	return {
-		name = name,
-		repo = reg.repo,
-		src = reg.src or (reg.repo and (GITHUB .. reg.repo)),
-		path = reg.path or reg.dir,
-		dir = reg.dir,
-		version = reg.version,
-		branch = reg.branch or (branches[name] or nil),
-		commit = (lockfile_revs()[name] or ""):sub(1, 7),
-		tag = tags[name] or nil,
-		lazy = reg.lazy == true,
-		loaded = rec ~= nil,
-		time_ms = rec and rec.time_ms,
-		reason = (rec and rec.reason) or (reg.lazy and "lazy (not loaded)" or "eager"),
-		triggers = triggers_of(reg),
-		dependencies = reg.dependencies or {},
-		priority = reg.priority,
-		dependency = reg.dependency == true,
-		dep_of = reg.dep_of,
-		outdated = outdated[name] == true,
-	}
+    local reg = registry[name]
+    if not reg then
+        return nil
+    end
+    local rec = records[name]
+    return {
+        name = name,
+        repo = reg.repo,
+        src = reg.src or (reg.repo and (GITHUB .. reg.repo)),
+        path = reg.path or reg.dir,
+        dir = reg.dir,
+        version = reg.version,
+        branch = reg.branch or (branches[name] or nil),
+        commit = (lockfile_revs()[name] or ""):sub(1, 7),
+        tag = tags[name] or nil,
+        lazy = reg.lazy == true,
+        loaded = rec ~= nil,
+        time_ms = rec and rec.time_ms,
+        reason = (rec and rec.reason) or (reg.lazy and "lazy (not loaded)" or "eager"),
+        triggers = triggers_of(reg),
+        dependencies = reg.dependencies or {},
+        priority = reg.priority,
+        dependency = reg.dependency == true,
+        dep_of = reg.dep_of,
+        outdated = outdated[name] == true,
+    }
 end
 
 --- Rich info for every known plugin, sorted by name.
 ---@return table[]
 function L.plugins()
-	local names = {}
-	for n in pairs(registry) do
-		names[#names + 1] = n
-	end
-	table.sort(names)
-	local out = {}
-	for _, n in ipairs(names) do
-		out[#out + 1] = L.info(n)
-	end
-	return out
+    local names = {}
+    for n in pairs(registry) do
+        names[#names + 1] = n
+    end
+    table.sort(names)
+    local out = {}
+    for _, n in ipairs(names) do
+        out[#out + 1] = L.info(n)
+    end
+    return out
 end
 
 --- Loaded/total counts (for the dashboard startup stat).
 ---@return { loaded: integer, total: integer }
 function L.stats()
-	local total, loaded = 0, 0
-	for n in pairs(registry) do
-		total = total + 1
-		if records[n] then
-			loaded = loaded + 1
-		end
-	end
-	return { loaded = loaded, total = total }
+    local total, loaded = 0, 0
+    for n in pairs(registry) do
+        total = total + 1
+        if records[n] then
+            loaded = loaded + 1
+        end
+    end
+    return { loaded = loaded, total = total }
 end
 
 --- Whether an upstream update was detected for `name` (set by L.check_outdated).
 ---@param name string
 ---@return boolean
 function L.is_outdated(name)
-	return outdated[name] == true
+    return outdated[name] == true
 end
 
 --- Asynchronously check which git-managed plugins have an upstream update.
@@ -199,77 +199,77 @@ end
 ---@param on_progress? fun(done: integer, total: integer)
 ---@return nil
 function L.check_outdated(cb, on_progress)
-	---@type { name: string, path: string }[]
-	local targets = {}
-	for name, reg in pairs(registry) do
-		-- Only git-managed installs (skip local dir= dev clones).
-		if reg.path and not reg.dir then
-			targets[#targets + 1] = { name = name, path = reg.path, version = reg.version }
-		end
-	end
+    ---@type { name: string, path: string }[]
+    local targets = {}
+    for name, reg in pairs(registry) do
+        -- Only git-managed installs (skip local dir= dev clones).
+        if reg.path and not reg.dir then
+            targets[#targets + 1] = { name = name, path = reg.path, version = reg.version }
+        end
+    end
 
-	outdated = {}
-	local total = #targets
-	if total == 0 then
-		if cb then
-			cb({})
-		end
-		return
-	end
+    outdated = {}
+    local total = #targets
+    if total == 0 then
+        if cb then
+            cb({})
+        end
+        return
+    end
 
-	local found = {}
-	local done = 0
-	local next_i = 0
-	local limit = 8 -- concurrent git processes
+    local found = {}
+    local done = 0
+    local next_i = 0
+    local limit = 8 -- concurrent git processes
 
-	local function finish_one()
-		done = done + 1
-		if on_progress then
-			vim.schedule(function()
-				on_progress(done, total)
-			end)
-		end
-		if done == total and cb then
-			vim.schedule(function()
-				cb(found)
-			end)
-		end
-	end
+    local function finish_one()
+        done = done + 1
+        if on_progress then
+            vim.schedule(function()
+                on_progress(done, total)
+            end)
+        end
+        if done == total and cb then
+            vim.schedule(function()
+                cb(found)
+            end)
+        end
+    end
 
-	local start_next -- forward declaration
-	local function check(t)
-		-- Compare the installed HEAD to the remote tip of the TRACKED ref (the spec's
-		-- branch/tag). A commit pin is a fixed SHA we can't ls-remote, so compare against
-		-- the default branch tip instead: this only flags that a newer upstream commit
-		-- exists (informative) — vim.pack still keeps the plugin at the pinned commit
-		-- until you explicitly update it.
-		local sha_pinned = t.version and t.version:match("^%x+$") and #t.version >= 7
-		local ref = (t.version and t.version ~= "" and not sha_pinned) and t.version or "HEAD"
-		vim.system({ "git", "-C", t.path, "ls-remote", "origin", ref }, { text = true }, function(r1)
-			local remote = (r1.stdout or ""):match("^(%x+)")
-			vim.system({ "git", "-C", t.path, "rev-parse", "HEAD" }, { text = true }, function(r2)
-				local local_sha = (r2.stdout or ""):gsub("%s+", "")
-				if remote and local_sha ~= "" and remote ~= local_sha then
-					outdated[t.name] = true
-					found[#found + 1] = t.name
-				end
-				finish_one()
-				start_next()
-			end)
-		end)
-	end
+    local start_next -- forward declaration
+    local function check(t)
+        -- Compare the installed HEAD to the remote tip of the TRACKED ref (the spec's
+        -- branch/tag). A commit pin is a fixed SHA we can't ls-remote, so compare against
+        -- the default branch tip instead: this only flags that a newer upstream commit
+        -- exists (informative) — vim.pack still keeps the plugin at the pinned commit
+        -- until you explicitly update it.
+        local sha_pinned = t.version and t.version:match("^%x+$") and #t.version >= 7
+        local ref = (t.version and t.version ~= "" and not sha_pinned) and t.version or "HEAD"
+        vim.system({ "git", "-C", t.path, "ls-remote", "origin", ref }, { text = true }, function(r1)
+            local remote = (r1.stdout or ""):match("^(%x+)")
+            vim.system({ "git", "-C", t.path, "rev-parse", "HEAD" }, { text = true }, function(r2)
+                local local_sha = (r2.stdout or ""):gsub("%s+", "")
+                if remote and local_sha ~= "" and remote ~= local_sha then
+                    outdated[t.name] = true
+                    found[#found + 1] = t.name
+                end
+                finish_one()
+                start_next()
+            end)
+        end)
+    end
 
-	function start_next()
-		next_i = next_i + 1
-		local t = targets[next_i]
-		if t then
-			check(t)
-		end
-	end
+    function start_next()
+        next_i = next_i + 1
+        local t = targets[next_i]
+        if t then
+            check(t)
+        end
+    end
 
-	for _ = 1, math.min(limit, total) do
-		start_next()
-	end
+    for _ = 1, math.min(limit, total) do
+        start_next()
+    end
 end
 
 --- Asynchronously read the git tag at HEAD for each git-managed plugin (cached).
@@ -277,71 +277,71 @@ end
 ---@param cb? fun()
 ---@return nil
 function L.load_tags(cb)
-	local targets = {}
-	for name, reg in pairs(registry) do
-		if reg.path and not reg.dir and (tags[name] == nil or branches[name] == nil) then
-			targets[#targets + 1] = { name = name, path = reg.path }
-		end
-	end
-	local total = #targets
-	if total == 0 then
-		if cb then
-			cb()
-		end
-		return
-	end
-	local done, next_i, limit = 0, 0, 8
-	local function finish_one()
-		done = done + 1
-		if done == total and cb then
-			vim.schedule(cb)
-		end
-	end
-	local start_next
-	local function one(t)
-		vim.system({ "git", "-C", t.path, "describe", "--tags", "--exact-match" }, { text = true }, function(res)
-			local tag = (res.code == 0) and (res.stdout or ""):gsub("%s+", "") or ""
-			tags[t.name] = (tag ~= "") and tag or false
-			-- Then the branch: the current branch if on one, else the default (origin
-			-- HEAD) — so detached checkouts still report the branch they track.
-			vim.system({ "git", "-C", t.path, "symbolic-ref", "--short", "HEAD" }, { text = true }, function(rb)
-				local b = (rb.code == 0) and (rb.stdout or ""):gsub("%s+", "") or ""
-				if b ~= "" then
-					branches[t.name] = b
-					finish_one()
-					start_next()
-				else
-					vim.system(
-						{ "git", "-C", t.path, "symbolic-ref", "--short", "refs/remotes/origin/HEAD" },
-						{ text = true },
-						function(rd)
-							local d = (rd.code == 0) and (rd.stdout or ""):gsub("%s+", ""):gsub("^origin/", "") or ""
-							branches[t.name] = (d ~= "") and d or false
-							finish_one()
-							start_next()
-						end
-					)
-				end
-			end)
-		end)
-	end
-	function start_next()
-		next_i = next_i + 1
-		local t = targets[next_i]
-		if t then
-			one(t)
-		end
-	end
-	for _ = 1, math.min(limit, total) do
-		start_next()
-	end
+    local targets = {}
+    for name, reg in pairs(registry) do
+        if reg.path and not reg.dir and (tags[name] == nil or branches[name] == nil) then
+            targets[#targets + 1] = { name = name, path = reg.path }
+        end
+    end
+    local total = #targets
+    if total == 0 then
+        if cb then
+            cb()
+        end
+        return
+    end
+    local done, next_i, limit = 0, 0, 8
+    local function finish_one()
+        done = done + 1
+        if done == total and cb then
+            vim.schedule(cb)
+        end
+    end
+    local start_next
+    local function one(t)
+        vim.system({ "git", "-C", t.path, "describe", "--tags", "--exact-match" }, { text = true }, function(res)
+            local tag = (res.code == 0) and (res.stdout or ""):gsub("%s+", "") or ""
+            tags[t.name] = (tag ~= "") and tag or false
+            -- Then the branch: the current branch if on one, else the default (origin
+            -- HEAD) — so detached checkouts still report the branch they track.
+            vim.system({ "git", "-C", t.path, "symbolic-ref", "--short", "HEAD" }, { text = true }, function(rb)
+                local b = (rb.code == 0) and (rb.stdout or ""):gsub("%s+", "") or ""
+                if b ~= "" then
+                    branches[t.name] = b
+                    finish_one()
+                    start_next()
+                else
+                    vim.system(
+                        { "git", "-C", t.path, "symbolic-ref", "--short", "refs/remotes/origin/HEAD" },
+                        { text = true },
+                        function(rd)
+                            local d = (rd.code == 0) and (rd.stdout or ""):gsub("%s+", ""):gsub("^origin/", "") or ""
+                            branches[t.name] = (d ~= "") and d or false
+                            finish_one()
+                            start_next()
+                        end
+                    )
+                end
+            end)
+        end)
+    end
+    function start_next()
+        next_i = next_i + 1
+        local t = targets[next_i]
+        if t then
+            one(t)
+        end
+    end
+    for _ = 1, math.min(limit, total) do
+        start_next()
+    end
 end
 
 --- Cached recent git-log lines for `name` (nil until L.load_git_log has run).
 ---@param name string
 ---@return string[]|nil
 function L.git_log(name)
-	return git_log[name]
+    return git_log[name]
 end
 
 --- Asynchronously read the recent git log for one plugin (cached).
@@ -349,31 +349,31 @@ end
 ---@param cb? fun(lines: string[])
 ---@return nil
 function L.load_git_log(name, cb)
-	if git_log[name] then
-		if cb then
-			cb(git_log[name])
-		end
-		return
-	end
-	local reg = registry[name]
-	if not (reg and reg.path) then
-		if cb then
-			cb({})
-		end
-		return
-	end
-	vim.system({ "git", "-C", reg.path, "log", "-8", "--format=%h  %s  (%cr)" }, { text = true }, function(res)
-		local lines = {}
-		for line in (res.stdout or ""):gmatch("[^\n]+") do
-			lines[#lines + 1] = line
-		end
-		git_log[name] = lines
-		if cb then
-			vim.schedule(function()
-				cb(lines)
-			end)
-		end
-	end)
+    if git_log[name] then
+        if cb then
+            cb(git_log[name])
+        end
+        return
+    end
+    local reg = registry[name]
+    if not (reg and reg.path) then
+        if cb then
+            cb({})
+        end
+        return
+    end
+    vim.system({ "git", "-C", reg.path, "log", "-8", "--format=%h  %s  (%cr)" }, { text = true }, function(res)
+        local lines = {}
+        for line in (res.stdout or ""):gmatch("[^\n]+") do
+            lines[#lines + 1] = line
+        end
+        git_log[name] = lines
+        if cb then
+            vim.schedule(function()
+                cb(lines)
+            end)
+        end
+    end)
 end
 
 --- Run a git command in a cloned plugin's dir, returning its output lines.
@@ -381,15 +381,15 @@ end
 ---@param args string[]
 ---@return string[]
 local function git_lines(name, args)
-	local reg = registry[name]
-	if not reg or reg.dir or not reg.path or vim.fn.isdirectory(reg.path) == 0 then
-		return {}
-	end
-	local res = vim.fn.systemlist(vim.list_extend({ "git", "-C", reg.path }, args))
-	if vim.v.shell_error ~= 0 then
-		return {}
-	end
-	return res
+    local reg = registry[name]
+    if not reg or reg.dir or not reg.path or vim.fn.isdirectory(reg.path) == 0 then
+        return {}
+    end
+    local res = vim.fn.systemlist(vim.list_extend({ "git", "-C", reg.path }, args))
+    if vim.v.shell_error ~= 0 then
+        return {}
+    end
+    return res
 end
 
 --- Fetch from origin (tags + branches) so the ref lists are fresh. Asynchronous —
@@ -398,32 +398,32 @@ end
 ---@param cb? fun()
 ---@return nil
 function L.plugin_fetch(name, cb)
-	local reg = registry[name]
-	if not reg or reg.dir or not reg.path then
-		if cb then
-			cb()
-		end
-		return
-	end
-	vim.system({ "git", "-C", reg.path, "fetch", "--quiet", "--tags", "--force", "origin" }, {}, function()
-		if cb then
-			vim.schedule(cb)
-		end
-	end)
+    local reg = registry[name]
+    if not reg or reg.dir or not reg.path then
+        if cb then
+            cb()
+        end
+        return
+    end
+    vim.system({ "git", "-C", reg.path, "fetch", "--quiet", "--tags", "--force", "origin" }, {}, function()
+        if cb then
+            vim.schedule(cb)
+        end
+    end)
 end
 
 --- Remote branches (origin/ stripped). Empty for dir= dev plugins.
 ---@param name string
 ---@return string[]
 function L.plugin_branches(name)
-	local out = {}
-	for _, b in ipairs(git_lines(name, { "branch", "-r", "--format=%(refname:short)" })) do
-		b = vim.trim(b):gsub("^origin/", "")
-		if b ~= "" and b ~= "origin" and not b:find("HEAD") then
-			out[#out + 1] = b
-		end
-	end
-	return out
+    local out = {}
+    for _, b in ipairs(git_lines(name, { "branch", "-r", "--format=%(refname:short)" })) do
+        b = vim.trim(b):gsub("^origin/", "")
+        if b ~= "" and b ~= "origin" and not b:find("HEAD") then
+            out[#out + 1] = b
+        end
+    end
+    return out
 end
 
 --- ALL tags, newest (highest version) first. Tags are NOT branch-scoped — a tag is
@@ -431,14 +431,14 @@ end
 ---@param name string
 ---@return string[]
 function L.plugin_tags(name)
-	return git_lines(name, { "tag", "--sort=-version:refname" })
+    return git_lines(name, { "tag", "--sort=-version:refname" })
 end
 
 --- The newest tag by version, or nil.
 ---@param name string
 ---@return string|nil
 function L.plugin_newest_tag(name)
-	return L.plugin_tags(name)[1]
+    return L.plugin_tags(name)[1]
 end
 
 --- Recent commits ("<sha> <subject>") of a branch (origin/<branch>), newest first.
@@ -446,8 +446,8 @@ end
 ---@param branch? string
 ---@return string[]
 function L.plugin_commits(name, branch)
-	local ref = (branch and branch ~= "") and ("origin/" .. branch) or "HEAD"
-	return git_lines(name, { "log", ref, "-n", "50", "--format=%h %s" })
+    local ref = (branch and branch ~= "") and ("origin/" .. branch) or "HEAD"
+    return git_lines(name, { "log", ref, "-n", "50", "--format=%h %s" })
 end
 
 --- Remote tip sha of a branch (newest commit), short form, or nil.
@@ -455,19 +455,19 @@ end
 ---@param branch string
 ---@return string|nil
 function L.plugin_branch_tip(name, branch)
-	local out = git_lines(name, { "rev-parse", "--short", "origin/" .. branch })
-	return out[1] and vim.trim(out[1]) or nil
+    local out = git_lines(name, { "rev-parse", "--short", "origin/" .. branch })
+    return out[1] and vim.trim(out[1]) or nil
 end
 
 --- The repo's default branch (origin HEAD), e.g. "main" / "master". Read locally.
 ---@param name string
 ---@return string|nil
 function L.plugin_default_branch(name)
-	local out = git_lines(name, { "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD" })
-	if out[1] and vim.trim(out[1]) ~= "" then
-		return (vim.trim(out[1]):gsub("^origin/", ""))
-	end
-	return nil
+    local out = git_lines(name, { "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD" })
+    if out[1] and vim.trim(out[1]) ~= "" then
+        return (vim.trim(out[1]):gsub("^origin/", ""))
+    end
+    return nil
 end
 
 --- Newest tag whose version matches a lock prefix. prefix "1" matches the newest
@@ -477,17 +477,17 @@ end
 ---@param prefix string
 ---@return string|nil
 function L.plugin_resolve_tag(name, prefix)
-	local function norm(t)
-		return (tostring(t):gsub("^v", ""))
-	end
-	local np = norm(prefix)
-	for _, t in ipairs(L.plugin_tags(name)) do -- already newest-first
-		local nt = norm(t)
-		if nt == np or nt:sub(1, #np + 1) == (np .. ".") then
-			return t
-		end
-	end
-	return nil
+    local function norm(t)
+        return (tostring(t):gsub("^v", ""))
+    end
+    local np = norm(prefix)
+    for _, t in ipairs(L.plugin_tags(name)) do -- already newest-first
+        local nt = norm(t)
+        if nt == np or nt:sub(1, #np + 1) == (np .. ".") then
+            return t
+        end
+    end
+    return nil
 end
 
 --- Current checkout state: how the plugin is pinned right now (from git, not config).
@@ -495,20 +495,20 @@ end
 ---@param name string
 ---@return { kind: "tag"|"branch"|"commit", value: string }|nil
 function L.plugin_current(name)
-	local reg = registry[name]
-	if not reg or reg.dir or not reg.path then
-		return nil
-	end
-	local tag = git_lines(name, { "describe", "--tags", "--exact-match" })
-	if tag[1] and vim.trim(tag[1]) ~= "" then
-		return { kind = "tag", value = vim.trim(tag[1]) }
-	end
-	local br = git_lines(name, { "symbolic-ref", "--short", "-q", "HEAD" })
-	if br[1] and vim.trim(br[1]) ~= "" then
-		return { kind = "branch", value = vim.trim(br[1]) }
-	end
-	local sha = git_lines(name, { "rev-parse", "--short", "HEAD" })
-	return sha[1] and { kind = "commit", value = vim.trim(sha[1]) } or nil
+    local reg = registry[name]
+    if not reg or reg.dir or not reg.path then
+        return nil
+    end
+    local tag = git_lines(name, { "describe", "--tags", "--exact-match" })
+    if tag[1] and vim.trim(tag[1]) ~= "" then
+        return { kind = "tag", value = vim.trim(tag[1]) }
+    end
+    local br = git_lines(name, { "symbolic-ref", "--short", "-q", "HEAD" })
+    if br[1] and vim.trim(br[1]) ~= "" then
+        return { kind = "branch", value = vim.trim(br[1]) }
+    end
+    local sha = git_lines(name, { "rev-parse", "--short", "HEAD" })
+    return sha[1] and { kind = "commit", value = vim.trim(sha[1]) } or nil
 end
 
 --- Update a tracked branch to its remote tip (fetch already done by caller).
@@ -517,17 +517,17 @@ end
 ---@param branch string
 ---@return string|nil  error message on failure (nil on success)
 function L.plugin_update_branch(name, branch)
-	local reg = registry[name]
-	if not reg or reg.dir or not reg.path then
-		return "not a git plugin"
-	end
-	vim.fn.system({ "git", "-C", reg.path, "checkout", "--quiet", branch })
-	local out = vim.fn.system({ "git", "-C", reg.path, "reset", "--hard", "--quiet", "origin/" .. branch })
-	if vim.v.shell_error ~= 0 then
-		return vim.trim(out)
-	end
-	outdated[name] = nil
-	return nil
+    local reg = registry[name]
+    if not reg or reg.dir or not reg.path then
+        return "not a git plugin"
+    end
+    vim.fn.system({ "git", "-C", reg.path, "checkout", "--quiet", branch })
+    local out = vim.fn.system({ "git", "-C", reg.path, "reset", "--hard", "--quiet", "origin/" .. branch })
+    if vim.v.shell_error ~= 0 then
+        return vim.trim(out)
+    end
+    outdated[name] = nil
+    return nil
 end
 
 --- Check out `ref` (tag/branch/commit) in the plugin's dir. Synchronous; assumes the
@@ -536,16 +536,16 @@ end
 ---@param ref string
 ---@return string|nil  error message on failure (nil on success)
 function L.plugin_checkout(name, ref)
-	local reg = registry[name]
-	if not reg or reg.dir or not reg.path then
-		return "not a git plugin"
-	end
-	local out = vim.fn.system({ "git", "-C", reg.path, "checkout", "--quiet", ref })
-	if vim.v.shell_error ~= 0 then
-		return vim.trim(out)
-	end
-	outdated[name] = nil
-	return nil
+    local reg = registry[name]
+    if not reg or reg.dir or not reg.path then
+        return "not a git plugin"
+    end
+    local out = vim.fn.system({ "git", "-C", reg.path, "checkout", "--quiet", ref })
+    if vim.v.shell_error ~= 0 then
+        return vim.trim(out)
+    end
+    outdated[name] = nil
+    return nil
 end
 
 return L

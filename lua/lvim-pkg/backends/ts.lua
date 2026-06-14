@@ -24,29 +24,29 @@ local outdated = {}
 
 ---@return string  parser .so output directory
 local function parser_dir()
-	return paths.ts() .. "/parser"
+    return paths.ts() .. "/parser"
 end
 
 ---@return string  query files directory
 local function queries_dir()
-	return paths.ts() .. "/queries"
+    return paths.ts() .. "/queries"
 end
 
 --- Ensure root/ts exists and is on the runtimepath, and kick off a registry fetch.
 --- Built-in vim.treesitter reads parser/<lang>.so and queries/<lang>/ from the rtp.
 ---@return nil
 function B.ensure_install_dir()
-	if rtp_added then
-		return
-	end
-	rtp_added = true
-	vim.fn.mkdir(parser_dir(), "p")
-	vim.fn.mkdir(queries_dir(), "p")
-	local dir = paths.ts()
-	if not vim.tbl_contains(vim.opt.runtimepath:get(), dir) then
-		vim.opt.runtimepath:prepend(dir)
-	end
-	registry.ensure() -- background; populates the catalogue for available()
+    if rtp_added then
+        return
+    end
+    rtp_added = true
+    vim.fn.mkdir(parser_dir(), "p")
+    vim.fn.mkdir(queries_dir(), "p")
+    local dir = paths.ts()
+    if not vim.tbl_contains(vim.opt.runtimepath:get(), dir) then
+        vim.opt.runtimepath:prepend(dir)
+    end
+    registry.ensure() -- background; populates the catalogue for available()
 end
 
 -- ── install engine ────────────────────────────────────────────────────────────
@@ -54,14 +54,14 @@ end
 ---@param path string
 ---@return table|nil
 local function read_json(path)
-	local f = io.open(path, "r")
-	if not f then
-		return nil
-	end
-	local content = f:read("*a")
-	f:close()
-	local ok, data = pcall(vim.json.decode, content)
-	return ok and data or nil
+    local f = io.open(path, "r")
+    if not f then
+        return nil
+    end
+    local content = f:read("*a")
+    f:close()
+    local ok, data = pcall(vim.json.decode, content)
+    return ok and data or nil
 end
 
 --- The authoritative current version string for `lang` — the same value that an install
@@ -72,27 +72,27 @@ end
 ---@param lang string
 ---@param cb fun(version: string|nil)
 local function resolve_latest(lang, cb)
-	local entry = registry.get(lang)
-	local src = entry and entry.source
-	if not src or src.type == "queries_only" then
-		return cb(nil)
-	end
-	if src.queries_url then
-		-- Mirror install: the queries repo (always on main) pins the grammar revision.
-		local raw = src.queries_url:gsub("github%.com", "raw.githubusercontent.com") .. "/main/parser.json"
-		local tmp = vim.fn.tempname()
-		util.download(raw, tmp, function(err)
-			local pj = (not err) and read_json(tmp) or nil
-			vim.fn.delete(tmp)
-			cb(pj and pj.parser_version or nil)
-		end)
-	elseif src.parser_url then
-		vim.system({ "git", "ls-remote", src.parser_url, "HEAD" }, { text = true }, function(r)
-			cb((r.stdout or ""):match("^(%x+)"))
-		end)
-	else
-		cb(nil)
-	end
+    local entry = registry.get(lang)
+    local src = entry and entry.source
+    if not src or src.type == "queries_only" then
+        return cb(nil)
+    end
+    if src.queries_url then
+        -- Mirror install: the queries repo (always on main) pins the grammar revision.
+        local raw = src.queries_url:gsub("github%.com", "raw.githubusercontent.com") .. "/main/parser.json"
+        local tmp = vim.fn.tempname()
+        util.download(raw, tmp, function(err)
+            local pj = (not err) and read_json(tmp) or nil
+            vim.fn.delete(tmp)
+            cb(pj and pj.parser_version or nil)
+        end)
+    elseif src.parser_url then
+        vim.system({ "git", "ls-remote", src.parser_url, "HEAD" }, { text = true }, function(r)
+            cb((r.stdout or ""):match("^(%x+)"))
+        end)
+    else
+        cb(nil)
+    end
 end
 
 --- Record `lang`'s installed version (resolved the same way the outdated check resolves
@@ -100,13 +100,13 @@ end
 ---@param lang string
 ---@param cb fun()
 local function record_installed(lang, cb)
-	resolve_latest(lang, function(version)
-		if version then
-			db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = version })
-		end
-		outdated[lang] = nil
-		cb()
-	end)
+    resolve_latest(lang, function(version)
+        if version then
+            db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = version })
+        end
+        outdated[lang] = nil
+        cb()
+    end)
 end
 
 --- Download a GitHub repo tarball at `ref` and extract it. `cb(err, dir)` where
@@ -115,30 +115,30 @@ end
 ---@param ref string   tag, branch or commit
 ---@param cb  fun(err: string|nil, dir: string|nil)
 local function fetch_repo(url, ref, cb)
-	local owner_repo = url:gsub("https://github.com/", ""):gsub("%.git$", "")
-	local tarball = string.format("https://github.com/%s/archive/%s.tar.gz", owner_repo, ref)
-	local tmp = vim.fn.tempname()
-	vim.fn.mkdir(tmp, "p")
-	local archive = tmp .. "/repo.tar.gz"
-	util.download(tarball, archive, function(err)
-		if err then
-			return cb(("download %s@%s: %s"):format(owner_repo, ref, err))
-		end
-		util.extract(archive, tmp, function(e2)
-			if e2 then
-				return cb("extract: " .. e2)
-			end
-			-- GitHub wraps the repo in a single <repo>-<ref> directory.
-			local root
-			for name, t in vim.fs.dir(tmp) do
-				if t == "directory" then
-					root = tmp .. "/" .. name
-					break
-				end
-			end
-			cb(nil, root)
-		end)
-	end)
+    local owner_repo = url:gsub("https://github.com/", ""):gsub("%.git$", "")
+    local tarball = string.format("https://github.com/%s/archive/%s.tar.gz", owner_repo, ref)
+    local tmp = vim.fn.tempname()
+    vim.fn.mkdir(tmp, "p")
+    local archive = tmp .. "/repo.tar.gz"
+    util.download(tarball, archive, function(err)
+        if err then
+            return cb(("download %s@%s: %s"):format(owner_repo, ref, err))
+        end
+        util.extract(archive, tmp, function(e2)
+            if e2 then
+                return cb("extract: " .. e2)
+            end
+            -- GitHub wraps the repo in a single <repo>-<ref> directory.
+            local root
+            for name, t in vim.fs.dir(tmp) do
+                if t == "directory" then
+                    root = tmp .. "/" .. name
+                    break
+                end
+            end
+            cb(nil, root)
+        end)
+    end)
 end
 
 --- Compile a grammar directory's parser into `out` (.so), handling an optional
@@ -148,57 +148,57 @@ end
 ---@param out string  output .so path
 ---@param cb  fun(err: string|nil)
 local function compile(dir, out, cb)
-	local src = dir .. "/src"
-	local function do_cc()
-		local sources = { src .. "/parser.c" }
-		local compiler = "cc"
-		if vim.fn.filereadable(src .. "/scanner.c") == 1 then
-			sources[#sources + 1] = src .. "/scanner.c"
-		elseif vim.fn.filereadable(src .. "/scanner.cc") == 1 then
-			sources[#sources + 1] = src .. "/scanner.cc"
-			compiler = "c++"
-		end
-		vim.fn.mkdir(vim.fn.fnamemodify(out, ":h"), "p")
-		local cmd = { compiler, "-o", out, "-shared", "-Os", "-fPIC", "-I" .. src }
-		vim.list_extend(cmd, sources)
-		util.run(cmd, {}, cb)
-	end
-	if vim.fn.filereadable(src .. "/parser.c") == 1 then
-		return do_cc()
-	end
-	-- No committed parser.c: generate it from grammar.js with the tree-sitter CLI.
-	if vim.fn.filereadable(dir .. "/grammar.js") == 0 or vim.fn.executable("tree-sitter") == 0 then
-		return cb("no src/parser.c and cannot run `tree-sitter generate`")
-	end
-	util.run({ "tree-sitter", "generate" }, { cwd = dir }, function(gerr)
-		if gerr then
-			return cb("tree-sitter generate: " .. gerr)
-		end
-		if vim.fn.filereadable(src .. "/parser.c") == 0 then
-			return cb("tree-sitter generate produced no parser.c")
-		end
-		do_cc()
-	end)
+    local src = dir .. "/src"
+    local function do_cc()
+        local sources = { src .. "/parser.c" }
+        local compiler = "cc"
+        if vim.fn.filereadable(src .. "/scanner.c") == 1 then
+            sources[#sources + 1] = src .. "/scanner.c"
+        elseif vim.fn.filereadable(src .. "/scanner.cc") == 1 then
+            sources[#sources + 1] = src .. "/scanner.cc"
+            compiler = "c++"
+        end
+        vim.fn.mkdir(vim.fn.fnamemodify(out, ":h"), "p")
+        local cmd = { compiler, "-o", out, "-shared", "-Os", "-fPIC", "-I" .. src }
+        vim.list_extend(cmd, sources)
+        util.run(cmd, {}, cb)
+    end
+    if vim.fn.filereadable(src .. "/parser.c") == 1 then
+        return do_cc()
+    end
+    -- No committed parser.c: generate it from grammar.js with the tree-sitter CLI.
+    if vim.fn.filereadable(dir .. "/grammar.js") == 0 or vim.fn.executable("tree-sitter") == 0 then
+        return cb("no src/parser.c and cannot run `tree-sitter generate`")
+    end
+    util.run({ "tree-sitter", "generate" }, { cwd = dir }, function(gerr)
+        if gerr then
+            return cb("tree-sitter generate: " .. gerr)
+        end
+        if vim.fn.filereadable(src .. "/parser.c") == 0 then
+            return cb("tree-sitter generate produced no parser.c")
+        end
+        do_cc()
+    end)
 end
 
 --- Copy every .scm file from `qroot` (and qroot/queries) into queries/<lang>/.
 ---@param qroot string
 ---@param lang string
 local function copy_queries(qroot, lang)
-	local dest = queries_dir() .. "/" .. lang
-	vim.fn.mkdir(dest, "p")
-	local function copy_from(d)
-		if not d or vim.fn.isdirectory(d) == 0 then
-			return
-		end
-		for name, t in vim.fs.dir(d) do
-			if t == "file" and name:match("%.scm$") then
-				pcall(vim.fn.writefile, vim.fn.readfile(d .. "/" .. name), dest .. "/" .. name)
-			end
-		end
-	end
-	copy_from(qroot)
-	copy_from(qroot and (qroot .. "/queries"))
+    local dest = queries_dir() .. "/" .. lang
+    vim.fn.mkdir(dest, "p")
+    local function copy_from(d)
+        if not d or vim.fn.isdirectory(d) == 0 then
+            return
+        end
+        for name, t in vim.fs.dir(d) do
+            if t == "file" and name:match("%.scm$") then
+                pcall(vim.fn.writefile, vim.fn.readfile(d .. "/" .. name), dest .. "/" .. name)
+            end
+        end
+    end
+    copy_from(qroot)
+    copy_from(qroot and (qroot .. "/queries"))
 end
 
 --- Install one language: its `requires` dependencies first, then its parser (.so)
@@ -207,109 +207,109 @@ end
 ---@param cb fun(err: string|nil)
 ---@param seen? table<string, boolean>
 local function install_one(lang, cb, seen)
-	seen = seen or {}
-	if seen[lang] then
-		return cb(nil)
-	end
-	seen[lang] = true
-	local entry = registry.get(lang)
-	if not entry then
-		return cb("unknown parser: " .. lang)
-	end
-	local src = entry.source
+    seen = seen or {}
+    if seen[lang] then
+        return cb(nil)
+    end
+    seen[lang] = true
+    local entry = registry.get(lang)
+    if not entry then
+        return cb("unknown parser: " .. lang)
+    end
+    local src = entry.source
 
-	-- The parser + queries install for `lang`, run once its dependencies are present.
-	local function do_install()
-		-- queries_only: a dialect reusing another parser (installed via `requires`); queries only.
-		if src.type == "queries_only" then
-			return fetch_repo(src.url, "main", function(err, qdir)
-				if err then
-					return cb(err)
-				end
-				copy_queries(qdir, lang)
-				cb(nil)
-			end)
-		end
-		-- external_queries / self_contained: queries repo (for the pinned version) → parser → compile.
-		local function with_queries(qdir)
-			local pj = qdir and read_json(qdir .. "/parser.json") or {}
-			local purl = pj.url or src.parser_url
-			local ref = pj.parser_version or "main"
-			fetch_repo(purl, ref, function(e2, pdir)
-				if e2 then
-					return cb(e2)
-				end
-				local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
-				compile(grammar, parser_dir() .. "/" .. lang .. ".so", function(e3)
-					if e3 then
-						return cb("compile " .. lang .. ": " .. e3)
-					end
-					copy_queries(qdir or grammar, lang) -- self_contained: queries live in the parser repo
-					record_installed(lang, function()
-						cb(nil)
-					end)
-				end)
-			end)
-		end
-		if src.queries_url then
-			fetch_repo(src.queries_url, "main", function(err, qdir)
-				if err then
-					return cb(err)
-				end
-				with_queries(qdir)
-			end)
-		else
-			with_queries(nil)
-		end
-	end
+    -- The parser + queries install for `lang`, run once its dependencies are present.
+    local function do_install()
+        -- queries_only: a dialect reusing another parser (installed via `requires`); queries only.
+        if src.type == "queries_only" then
+            return fetch_repo(src.url, "main", function(err, qdir)
+                if err then
+                    return cb(err)
+                end
+                copy_queries(qdir, lang)
+                cb(nil)
+            end)
+        end
+        -- external_queries / self_contained: queries repo (for the pinned version) → parser → compile.
+        local function with_queries(qdir)
+            local pj = qdir and read_json(qdir .. "/parser.json") or {}
+            local purl = pj.url or src.parser_url
+            local ref = pj.parser_version or "main"
+            fetch_repo(purl, ref, function(e2, pdir)
+                if e2 then
+                    return cb(e2)
+                end
+                local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
+                compile(grammar, parser_dir() .. "/" .. lang .. ".so", function(e3)
+                    if e3 then
+                        return cb("compile " .. lang .. ": " .. e3)
+                    end
+                    copy_queries(qdir or grammar, lang) -- self_contained: queries live in the parser repo
+                    record_installed(lang, function()
+                        cb(nil)
+                    end)
+                end)
+            end)
+        end
+        if src.queries_url then
+            fetch_repo(src.queries_url, "main", function(err, qdir)
+                if err then
+                    return cb(err)
+                end
+                with_queries(qdir)
+            end)
+        else
+            with_queries(nil)
+        end
+    end
 
-	-- Install dependencies (e.g. jsx requires javascript) before the language itself.
-	local reqs = entry.requires or {}
-	local i = 0
-	local function next_dep()
-		i = i + 1
-		if i > #reqs then
-			return do_install()
-		end
-		install_one(reqs[i], function(err)
-			if err then
-				return cb(err)
-			end
-			next_dep()
-		end, seen)
-	end
-	next_dep()
+    -- Install dependencies (e.g. jsx requires javascript) before the language itself.
+    local reqs = entry.requires or {}
+    local i = 0
+    local function next_dep()
+        i = i + 1
+        if i > #reqs then
+            return do_install()
+        end
+        install_one(reqs[i], function(err)
+            if err then
+                return cb(err)
+            end
+            next_dep()
+        end, seen)
+    end
+    next_dep()
 end
 
 -- ── backend interface ─────────────────────────────────────────────────────────
 
 ---@return string[]
 function B.available()
-	B.ensure_install_dir()
-	return registry.names()
+    B.ensure_install_dir()
+    return registry.names()
 end
 
 ---@return string[]
 function B.installed()
-	local out = {}
-	for _, so in ipairs(vim.fn.glob(parser_dir() .. "/*.so", false, true)) do
-		out[#out + 1] = vim.fn.fnamemodify(so, ":t:r")
-	end
-	table.sort(out)
-	return out
+    local out = {}
+    for _, so in ipairs(vim.fn.glob(parser_dir() .. "/*.so", false, true)) do
+        out[#out + 1] = vim.fn.fnamemodify(so, ":t:r")
+    end
+    table.sort(out)
+    return out
 end
 
 ---@param name string
 ---@return boolean
 function B.is_installed(name)
-	return vim.fn.filereadable(parser_dir() .. "/" .. name .. ".so") == 1
+    return vim.fn.filereadable(parser_dir() .. "/" .. name .. ".so") == 1
 end
 
 --- Whether `lang` has its Neovim queries installed (highlights.scm present).
 ---@param name string
 ---@return boolean
 function B.has_queries(name)
-	return vim.fn.filereadable(queries_dir() .. "/" .. name .. "/highlights.scm") == 1
+    return vim.fn.filereadable(queries_dir() .. "/" .. name .. "/highlights.scm") == 1
 end
 
 --- Install ONLY the queries for `lang` (no parser compile). Used to migrate parsers
@@ -319,81 +319,81 @@ end
 ---@param cb? fun(err: string|nil)
 ---@return nil
 function B.install_queries(name, cb)
-	cb = cb or function() end
-	registry.ensure(function()
-		local entry = registry.get(name)
-		if not entry then
-			return cb("unknown parser: " .. name)
-		end
-		local src = entry.source
-		local qurl = src.queries_url or (src.type == "queries_only" and src.url) or nil
-		if qurl then
-			return fetch_repo(qurl, "main", function(err, qdir)
-				if err then
-					return cb(err)
-				end
-				copy_queries(qdir, name)
-				cb(nil)
-			end)
-		end
-		-- self_contained: queries live in the parser repo.
-		if src.parser_url then
-			return fetch_repo(src.parser_url, "main", function(err, pdir)
-				if err then
-					return cb(err)
-				end
-				local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
-				copy_queries(grammar, name)
-				cb(nil)
-			end)
-		end
-		cb(nil)
-	end)
+    cb = cb or function() end
+    registry.ensure(function()
+        local entry = registry.get(name)
+        if not entry then
+            return cb("unknown parser: " .. name)
+        end
+        local src = entry.source
+        local qurl = src.queries_url or (src.type == "queries_only" and src.url) or nil
+        if qurl then
+            return fetch_repo(qurl, "main", function(err, qdir)
+                if err then
+                    return cb(err)
+                end
+                copy_queries(qdir, name)
+                cb(nil)
+            end)
+        end
+        -- self_contained: queries live in the parser repo.
+        if src.parser_url then
+            return fetch_repo(src.parser_url, "main", function(err, pdir)
+                if err then
+                    return cb(err)
+                end
+                local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
+                copy_queries(grammar, name)
+                cb(nil)
+            end)
+        end
+        cb(nil)
+    end)
 end
 
 --- Install parsers sequentially. `cb(err)` — nil on success, first error otherwise.
 ---@param names string[]
 ---@param cb? fun(err: string|nil)
 function B.install(names, cb)
-	cb = cb or function() end
-	B.ensure_install_dir()
-	registry.ensure(function()
-		local i = 0
-		local function step()
-			i = i + 1
-			if i > #names then
-				return cb(nil)
-			end
-			install_one(names[i], function(err)
-				if err then
-					return cb(err)
-				end
-				step()
-			end)
-		end
-		step()
-	end)
+    cb = cb or function() end
+    B.ensure_install_dir()
+    registry.ensure(function()
+        local i = 0
+        local function step()
+            i = i + 1
+            if i > #names then
+                return cb(nil)
+            end
+            install_one(names[i], function(err)
+                if err then
+                    return cb(err)
+                end
+                step()
+            end)
+        end
+        step()
+    end)
 end
 
 --- Update = reinstall at the current pinned version.
 ---@param names? string[]
 ---@param cb? fun(err: string|nil)
 function B.update(names, cb)
-	B.install(names or B.installed(), cb)
+    B.install(names or B.installed(), cb)
 end
 
 ---@param names string[]
 ---@param cb? fun(err: string|nil)
 function B.remove(names, cb)
-	for _, lang in ipairs(names or {}) do
-		vim.fn.delete(parser_dir() .. "/" .. lang .. ".so")
-		vim.fn.delete(queries_dir() .. "/" .. lang, "rf")
-		db.receipt_remove(RECEIPT_PREFIX .. lang)
-		outdated[lang] = nil
-	end
-	if cb then
-		cb(nil)
-	end
+    for _, lang in ipairs(names or {}) do
+        vim.fn.delete(parser_dir() .. "/" .. lang .. ".so")
+        vim.fn.delete(queries_dir() .. "/" .. lang, "rf")
+        db.receipt_remove(RECEIPT_PREFIX .. lang)
+        outdated[lang] = nil
+    end
+    if cb then
+        cb(nil)
+    end
 end
 
 -- ── version tracking ──────────────────────────────────────────────────────────
@@ -403,8 +403,8 @@ end
 ---@param lang string
 ---@return string|nil
 function B.installed_version(lang)
-	local r = db.receipt_get(RECEIPT_PREFIX .. lang)
-	return r and r.version or nil
+    local r = db.receipt_get(RECEIPT_PREFIX .. lang)
+    return r and r.version or nil
 end
 
 --- Whether the last check found `lang` behind the registry's current version. Cached;
@@ -412,7 +412,7 @@ end
 ---@param lang string
 ---@return boolean
 function B.is_outdated(lang)
-	return outdated[lang] == true
+    return outdated[lang] == true
 end
 
 --- Check installed parsers against the registry's current versions, async with a small
@@ -422,65 +422,65 @@ end
 ---@param on_progress? fun(done: integer, total: integer)
 ---@return nil
 function B.check_outdated(cb, on_progress)
-	registry.ensure(function()
-		local langs = B.installed()
-		local total = #langs
-		local found = {}
-		if total == 0 then
-			outdated = {}
-			if cb then
-				cb(found)
-			end
-			return
-		end
-		local done, next_i = 0, 0
-		local limit = 8
-		local start_next
-		local function finish_one()
-			done = done + 1
-			if on_progress then
-				vim.schedule(function()
-					on_progress(done, total)
-				end)
-			end
-			if done == total and cb then
-				vim.schedule(function()
-					cb(found)
-				end)
-			end
-		end
-		local function check(lang)
-			local cur = B.installed_version(lang)
-			resolve_latest(lang, function(latest)
-				if not cur then
-					-- No recorded build revision (installed before version tracking): baseline
-					-- it to the current version so future registry bumps are detected. We can't
-					-- know the real build revision, so treat it as up to date for now.
-					if latest then
-						db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = latest })
-					end
-					outdated[lang] = nil
-				elseif latest and cur ~= latest then
-					outdated[lang] = true
-					found[#found + 1] = lang
-				else
-					outdated[lang] = nil
-				end
-				finish_one()
-				start_next()
-			end)
-		end
-		function start_next()
-			next_i = next_i + 1
-			local lang = langs[next_i]
-			if lang then
-				check(lang)
-			end
-		end
-		for _ = 1, math.min(limit, total) do
-			start_next()
-		end
-	end)
+    registry.ensure(function()
+        local langs = B.installed()
+        local total = #langs
+        local found = {}
+        if total == 0 then
+            outdated = {}
+            if cb then
+                cb(found)
+            end
+            return
+        end
+        local done, next_i = 0, 0
+        local limit = 8
+        local start_next
+        local function finish_one()
+            done = done + 1
+            if on_progress then
+                vim.schedule(function()
+                    on_progress(done, total)
+                end)
+            end
+            if done == total and cb then
+                vim.schedule(function()
+                    cb(found)
+                end)
+            end
+        end
+        local function check(lang)
+            local cur = B.installed_version(lang)
+            resolve_latest(lang, function(latest)
+                if not cur then
+                    -- No recorded build revision (installed before version tracking): baseline
+                    -- it to the current version so future registry bumps are detected. We can't
+                    -- know the real build revision, so treat it as up to date for now.
+                    if latest then
+                        db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = latest })
+                    end
+                    outdated[lang] = nil
+                elseif latest and cur ~= latest then
+                    outdated[lang] = true
+                    found[#found + 1] = lang
+                else
+                    outdated[lang] = nil
+                end
+                finish_one()
+                start_next()
+            end)
+        end
+        function start_next()
+            next_i = next_i + 1
+            local lang = langs[next_i]
+            if lang then
+                check(lang)
+            end
+        end
+        for _ = 1, math.min(limit, total) do
+            start_next()
+        end
+    end)
 end
 
 return B

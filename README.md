@@ -24,7 +24,11 @@ on `lvim-pkg`; `lvim-pkg` depends on nothing in the ecosystem.
 
 ## Installation
 
-Requires `kkharji/sqlite.lua` (the database for pins, install receipts and per-filetype declines).
+No Lua-plugin dependencies — install state is plain JSON under the install root (see
+[Layout on disk](#layout-on-disk)). External tools are needed only to actually fetch and
+build packages: `curl`, `tar`/`unzip`, a C compiler (`cc`) and the per-source toolchains
+(`git`, `npm`, `python3`/`pip`, `go`, `cargo`). Run `:checkhealth lvim-pkg` to see what is
+present.
 
 ### LVIM IDE
 
@@ -34,7 +38,6 @@ plugins query it during their own setup. Override via your user module
 
 ```lua
 modules["lvim-tech/lvim-pkg"] = {
-  dependencies = { "kkharji/sqlite.lua" },
   config = function()
     require("lvim-pkg").setup({ ensure_cli = true })
   end,
@@ -48,7 +51,6 @@ modules["lvim-tech/lvim-pkg"] = {
   "lvim-tech/lvim-pkg",
   lazy = false,
   priority = 1000,
-  dependencies = { "kkharji/sqlite.lua" },
   opts = { ensure_cli = true },   -- bootstrap the tree-sitter CLI
 }
 ```
@@ -75,8 +77,9 @@ require("lvim-pkg").setup({
 Everything lvim-pkg installs lives under `root`: `packages/` (Mason binaries),
 `bin/` (linked executables, added to `PATH`) and `ts/parser` + `ts/queries`
 (treesitter parsers and their queries, added to the runtimepath), plus
-`lvim-pkg.db` (SQLite: pins, install receipts and per-filetype declines) and the
-cached `registry.json` / `ts-registry.json` catalogues. Neovim plugins are **not**
+`state.json` (install receipts + per-filetype declines), the active version
+snapshot (pins / per-plugin + per-Mason version choices) and the cached
+`registry.json` / `ts-registry.json` catalogues. Neovim plugins are **not**
 here — `vim.pack` owns them under `site/pack/core/opt`.
 
 Catalogues are downloaded once at setup if their cache file is missing; there is no

@@ -35,7 +35,8 @@ local function receipt_path(name)
 end
 
 --- Read a package's install receipt, or nil when not installed by us.
---- Receipts live in the SQLite db; a legacy on-disk receipt is imported on read.
+--- Receipts live in the JSON state store (lvim-pkg.db); a legacy on-disk receipt is
+--- imported on read.
 ---@param name string
 ---@return table|nil
 function M.receipt(name)

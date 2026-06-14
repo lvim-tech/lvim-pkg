@@ -1,10 +1,10 @@
 -- lvim-pkg: :checkhealth lvim-pkg
 --
 -- Verifies the pieces lvim-pkg needs to install and run packages without
--- mason.nvim / nvim-treesitter: the sqlite database, a writable install root
--- wired onto PATH + runtimepath, the download/extract + compiler toolchain, the
--- per-source install toolchains (npm / pip / go / cargo / git) and the cached
--- catalogues.
+-- mason.nvim / nvim-treesitter: a writable install root wired onto PATH +
+-- runtimepath, the download/extract + compiler toolchain, the per-source
+-- install toolchains (npm / pip / go / cargo / git) and the cached catalogues.
+-- lvim-pkg has no Lua-plugin dependencies (state is plain JSON, not sqlite).
 --
 ---@module "lvim-pkg.health"
 
@@ -40,10 +40,10 @@ function M.check()
         h.error("Neovim >= 0.10 is required (vim.system, vim.uv, vim.fs)")
     end
 
-    if pcall(require, "sqlite") then
-        h.ok("sqlite.lua found (pins / install receipts / declines)")
-    else
-        h.error("sqlite.lua not found — required: add `kkharji/sqlite.lua` as a dependency")
+    -- Install state is plain JSON under the root (state.json + snapshot files); a readable
+    -- vim.json + the writable-root check below are all that is needed — no sqlite, no deps.
+    if type(vim.json) == "table" then
+        h.ok("state store: JSON under the install root (no external dependency)")
     end
 
     -- ── install root: layout, write access, PATH, runtimepath ─────────────────

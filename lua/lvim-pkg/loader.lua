@@ -94,10 +94,17 @@ function L.record(name, reason, time_ms)
     records[name] = { reason = reason, time_ms = time_ms }
 end
 
---- Normalize a trigger field (string | list | nil) to a string list.
+--- Normalize a trigger field (string | list | function | nil) to a string list.
+--- A function is evaluated first (lazy.nvim parity — `keys`/`event` may be given as a
+--- function returning the specs); a failing one degrades to "no triggers" rather than
+--- breaking the introspection UI.
 ---@param v any
 ---@return table
 local function aslist(v)
+    if type(v) == "function" then
+        local ok, res = pcall(v)
+        v = ok and res or nil
+    end
     if v == nil then
         return {}
     end

@@ -11,7 +11,7 @@
 local registry = require("lvim-pkg.registry.ts")
 local util = require("lvim-pkg.install.util")
 local paths = require("lvim-pkg.paths")
-local db = require("lvim-pkg.db")
+local store = require("lvim-pkg.store")
 
 local B = { kind = "parser" }
 
@@ -102,7 +102,7 @@ end
 local function record_installed(lang, cb)
     resolve_latest(lang, function(version)
         if version then
-            db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = version })
+            store.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = version })
         end
         outdated[lang] = nil
         cb()
@@ -358,27 +358,40 @@ function B.install_queries(name, cb)
     end)
 end
 
---- Install parsers sequentially. `cb(err)` — nil on success, first error otherwise.
+--- Install parsers, at most `config.max_concurrency` compiling at once (a worker pool —
+--- different languages write independent .so/query files, so they parallelise safely). Waits
+--- for the whole batch; `cb(err)` reports the first error encountered (nil when all succeed).
 ---@param names string[]
 ---@param cb? fun(err: string|nil)
 function B.install(names, cb)
     cb = cb or function() end
     B.ensure_install_dir()
     registry.ensure(function()
-        local i = 0
-        local function step()
-            i = i + 1
-            if i > #names then
-                return cb(nil)
+        local total = #names
+        if total == 0 then
+            return cb(nil)
+        end
+        local cap = math.max(1, require("lvim-pkg.config").max_concurrency or 4)
+        local next_idx, done, first_err = 0, 0, nil
+        local function start_next()
+            next_idx = next_idx + 1
+            local name = names[next_idx]
+            if not name then
+                return
             end
-            install_one(names[i], function(err)
-                if err then
-                    return cb(err)
+            install_one(name, function(err)
+                first_err = first_err or err
+                done = done + 1
+                if done == total then
+                    cb(first_err)
+                else
+                    start_next() -- pull the next queued parser into the freed slot
                 end
-                step()
             end)
         end
-        step()
+        for _ = 1, math.min(cap, total) do
+            start_next()
+        end
     end)
 end
 
@@ -395,7 +408,7 @@ function B.remove(names, cb)
     for _, lang in ipairs(names or {}) do
         vim.fn.delete(parser_dir() .. "/" .. lang .. ".so")
         vim.fn.delete(queries_dir() .. "/" .. lang, "rf")
-        db.receipt_remove(RECEIPT_PREFIX .. lang)
+        store.receipt_remove(RECEIPT_PREFIX .. lang)
         outdated[lang] = nil
     end
     if cb then
@@ -410,7 +423,7 @@ end
 ---@param lang string
 ---@return string|nil
 function B.installed_version(lang)
-    local r = db.receipt_get(RECEIPT_PREFIX .. lang)
+    local r = store.receipt_get(RECEIPT_PREFIX .. lang)
     return r and r.version or nil
 end
 
@@ -464,7 +477,7 @@ function B.check_outdated(cb, on_progress)
                     -- it to the current version so future registry bumps are detected. We can't
                     -- know the real build revision, so treat it as up to date for now.
                     if latest then
-                        db.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = latest })
+                        store.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = latest })
                     end
                     outdated[lang] = nil
                 elseif latest and cur ~= latest then

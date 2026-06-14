@@ -42,17 +42,33 @@ function M.load(force)
     return cache
 end
 
---- Fetch the Mason registry (registry.json.zip from the latest release), extract it to
---- our own cache (root/registry.json), and reload. Only fetches on first-run bootstrap
---- (no cache yet) or when `force` is set (the explicit :LvimInstaller update-registry
---- command); otherwise the existing cache is used as-is — there is no periodic refresh.
---- A failed fetch keeps the old copy.
+--- True when the cache file exists and is younger than `config.registry_ttl` (a ttl of 0 or
+--- less disables the age check, so any existing cache counts as fresh).
+---@param path string
+---@return boolean
+local function fresh(path)
+    local st = vim.uv.fs_stat(path)
+    if not st then
+        return false
+    end
+    local ttl = require("lvim-pkg.config").registry_ttl
+    if type(ttl) ~= "number" or ttl <= 0 then
+        return true
+    end
+    return (os.time() - st.mtime.sec) < ttl
+end
+
+--- Fetch the Mason registry (registry.json.zip from the latest release), extract it to our
+--- own cache (root/registry.json), and reload. Fetches on first-run bootstrap (no cache),
+--- when the cache is older than `config.registry_ttl`, or when `force` is set (the explicit
+--- :LvimInstaller update-registry command). A fresh cache is used as-is; a failed fetch keeps
+--- the old copy.
 ---@param cb? fun()
----@param force? boolean  Re-fetch now even if a cache already exists
+---@param force? boolean  Re-fetch now even if a fresh cache exists
 ---@return nil
 function M.ensure(cb, force)
     cb = cb or function() end
-    if not force and vim.uv.fs_stat(paths.registry_file()) then
+    if not force and fresh(paths.registry_file()) then
         return cb()
     end
     paths.ensure()

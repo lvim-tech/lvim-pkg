@@ -60,16 +60,32 @@ function M.load()
     return load_file()
 end
 
---- Ensure the registry is available. Only fetches on first-run bootstrap (no cache on
---- disk) or when `force` is set (the explicit :LvimInstaller update-registry command);
---- otherwise the existing cache is used as-is — there is no periodic refresh. A failed
---- fetch falls back to whatever copy is on disk.
+--- True when the cache file exists and is younger than `config.registry_ttl` (a ttl of 0 or
+--- less disables the age check, so any existing cache counts as fresh).
+---@return boolean
+local function fresh()
+    local st = vim.uv.fs_stat(cache_path())
+    if not st then
+        return false
+    end
+    local ttl = require("lvim-pkg.config").registry_ttl
+    if type(ttl) ~= "number" or ttl <= 0 then
+        return true
+    end
+    return (os.time() - st.mtime.sec) < ttl
+end
+
+--- Ensure the registry is available. Fetches on first-run bootstrap (no cache on disk), when
+--- the cache is older than `config.registry_ttl`, or when `force` is set (the explicit
+--- :LvimInstaller update-registry command). A fresh cache is used as-is; a failed fetch falls
+--- back to whatever copy is on disk.
 ---@param cb? fun()
----@param force? boolean  Re-fetch now even if a cache already exists
+---@param force? boolean  Re-fetch now even if a fresh cache exists
 ---@return nil
 function M.ensure(cb, force)
     cb = cb or function() end
-    if not force and (cache or load_file()) then
+    if not force and fresh() then
+        load_file() -- populate the in-memory cache from the fresh on-disk copy
         return cb()
     end
     paths.ensure()

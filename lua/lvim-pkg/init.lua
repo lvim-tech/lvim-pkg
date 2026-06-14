@@ -11,7 +11,7 @@ local loader = require("lvim-pkg.loader")
 local pins = require("lvim-pkg.pins")
 local data = require("lvim-pkg.data")
 local cli = require("lvim-pkg.core.cli")
-local db = require("lvim-pkg.db")
+local store = require("lvim-pkg.store")
 local registry = require("lvim-pkg.registry")
 local registry_ts = require("lvim-pkg.registry.ts")
 
@@ -555,6 +555,22 @@ function M.snapshot_restore(diff, cb, on_progress)
     })
 end
 
+--- Export the active snapshot's full version set to a shareable lockfile.
+---@param dest string  Absolute path to write
+---@return boolean ok, string? err
+function M.snapshot_export(dest)
+    return require("lvim-pkg.snapshot").export(dest)
+end
+
+--- Import a lockfile into a new (non-active) snapshot; `select_snapshot` + `snapshot_restore`
+--- it to apply.
+---@param src string    Absolute path to read
+---@param name? string  Snapshot name to create (default: basename of src)
+---@return boolean ok, string? err
+function M.snapshot_import(src, name)
+    return require("lvim-pkg.snapshot").import(src, name)
+end
+
 -- ── Declines (per-filetype "do not offer these packages again") ───────────────
 
 --- Decline `names` for filetype `ft`: the unified prompt stops offering them and
@@ -564,7 +580,7 @@ end
 ---@return nil
 function M.decline(ft, names)
     for _, name in ipairs(names) do
-        db.decline_add(ft, name)
+        store.decline_add(ft, name)
     end
 end
 
@@ -573,13 +589,13 @@ end
 ---@param name string
 ---@return nil
 function M.undecline(ft, name)
-    db.decline_remove(ft, name)
+    store.decline_remove(ft, name)
 end
 
 --- Every decline as a { ft, name } list (for the management menu).
 ---@return { ft: string, name: string }[]
 function M.declined()
-    return db.declines_all()
+    return store.declines_all()
 end
 
 -- ── Registry refresh ──────────────────────────────────────────────────────────

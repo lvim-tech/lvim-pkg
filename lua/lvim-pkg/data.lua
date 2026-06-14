@@ -6,7 +6,7 @@
 ---@module "lvim-pkg.data"
 
 local state = require("lvim-pkg.state")
-local db = require("lvim-pkg.db")
+local store = require("lvim-pkg.store")
 
 local M = {}
 
@@ -21,7 +21,7 @@ local M = {}
 ---@return LvimPkgItem[]
 function M.missing_for_ft(ft)
     local pkg = require("lvim-pkg")
-    local declined = db.declines_for_ft(ft)
+    local declined = store.declines_for_ft(ft)
     local seen = {}
     local out = {}
     for _, provider in pairs(state.providers) do

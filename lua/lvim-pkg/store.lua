@@ -1,4 +1,4 @@
--- lvim-pkg: JSON-backed install state (no external dependency — no sqlite.lua).
+-- lvim-pkg: persistent install-state store — plain JSON, no external dependency (no sqlite).
 -- One file (root/state.json) holds what is actually installed and what the user skipped:
 --   receipts  name → { version, type, bins, installed_at }  (the real install: which
 --             binaries a Mason package provided, its version, when — needed for PATH
@@ -6,8 +6,9 @@
 --   declines  [ { ft, name } ]  packages declined for a filetype
 -- Version CHOICES (pins) are NOT here — they live in the switchable snapshot file
 -- (see lvim-pkg.snapshot). receipts/declines are install STATE, not switchable.
+-- (This is the on-disk store; lvim-pkg.state is the separate in-memory runtime table.)
 --
----@module "lvim-pkg.db"
+---@module "lvim-pkg.store"
 
 local paths = require("lvim-pkg.paths")
 
@@ -95,16 +96,6 @@ function M.receipt_remove(name)
     end
 end
 
---- Names of all packages with a receipt.
----@return string[]
-function M.receipt_names()
-    local out = {}
-    for name in pairs(load().receipts) do
-        out[#out + 1] = name
-    end
-    return out
-end
-
 -- ── declines ──────────────────────────────────────────────────────────────────
 
 --- Record that `name` was declined for filetype `ft` (idempotent).
@@ -158,12 +149,6 @@ function M.declines_all()
         out[#out + 1] = { ft = e.ft, name = e.name }
     end
     return out
-end
-
---- The store is always usable (plain file, no external dependency).
----@return boolean
-function M.available()
-    return true
 end
 
 return M

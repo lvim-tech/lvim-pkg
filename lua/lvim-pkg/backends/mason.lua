@@ -38,23 +38,35 @@ function B.is_installed(name)
     return install.is_installed(pkg_name(name))
 end
 
---- Install one or more registry packages in parallel via the own engine.
+--- Install one or more registry packages via the own engine, at most
+--- `config.max_concurrency` at a time (a worker pool, so a big batch does not fork dozens of
+--- processes at once).
 ---@param names string[]
 ---@param cb? fun(results: table<string, string|true>)  name → true (ok) | error string
 ---@param opts? { on_progress?: fun(name: string, status: string, action: string) }
 function B.install(names, cb, opts)
     opts = opts or {}
     local results = {}
-    local remaining = #names
-    if remaining == 0 then
+    local total = #names
+    if total == 0 then
         if cb then
             cb(results)
         end
         return
     end
-    for _, name in ipairs(names) do
-        if opts.on_progress then
+    -- Mark the whole batch queued up front so the UI can show every pending row.
+    if opts.on_progress then
+        for _, name in ipairs(names) do
             opts.on_progress(name, "pending", "Queued...")
+        end
+    end
+    local cap = math.max(1, require("lvim-pkg.config").max_concurrency or 4)
+    local next_idx, done = 0, 0
+    local function start_next()
+        next_idx = next_idx + 1
+        local name = names[next_idx]
+        if not name then
+            return
         end
         install.install(pkg_name(name), {
             on_progress = function(_, status, action)
@@ -67,19 +79,49 @@ function B.install(names, cb, opts)
                 opts.on_progress(name, err and "fail" or "ok", err or "Installed")
             end
             results[name] = err and err or true
-            remaining = remaining - 1
-            if remaining == 0 and cb then
-                cb(results)
+            done = done + 1
+            if done == total then
+                if cb then
+                    cb(results)
+                end
+            else
+                start_next() -- pull the next queued package into the freed slot
             end
         end)
     end
+    for _ = 1, math.min(cap, total) do
+        start_next()
+    end
 end
 
---- Update packages by reinstalling them (the engine always installs fresh).
+--- Update packages by reinstalling them — but ONLY the ones whose installed version differs
+--- from the version that would be installed now (the active snapshot's pin, else the
+--- catalogue's current version). Up-to-date packages are skipped (reported as ok) instead of
+--- being recompiled/redownloaded for nothing.
 ---@param names string[]
 ---@param cb? fun(results: table<string, string|true>)
 function B.update(names, cb)
-    B.install(names, cb)
+    local snapshot = require("lvim-pkg.snapshot")
+    local stale, uptodate = {}, {}
+    for _, name in ipairs(names) do
+        local r = install.receipt(pkg_name(name))
+        local pin = snapshot.get("mason", name)
+        local src = registry.source(name)
+        local target = (pin and pin ~= "") and pin or (src and src.version) or nil
+        if r and r.version and target and r.version == target then
+            uptodate[name] = true
+        else
+            stale[#stale + 1] = name
+        end
+    end
+    B.install(stale, function(results)
+        if cb then
+            for name in pairs(uptodate) do
+                results[name] = true
+            end
+            cb(results)
+        end
+    end)
 end
 
 --- Uninstall one or more packages.

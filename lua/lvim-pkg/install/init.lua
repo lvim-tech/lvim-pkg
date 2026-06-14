@@ -8,7 +8,7 @@
 
 local paths = require("lvim-pkg.paths")
 local registry = require("lvim-pkg.registry")
-local db = require("lvim-pkg.db")
+local store = require("lvim-pkg.store")
 
 local M = {}
 
@@ -35,16 +35,16 @@ local function receipt_path(name)
 end
 
 --- Read a package's install receipt, or nil when not installed by us.
---- Receipts live in the JSON state store (lvim-pkg.db); a legacy on-disk receipt is
+--- Receipts live in the JSON state store (lvim-pkg.store); a legacy on-disk receipt is
 --- imported on read.
 ---@param name string
 ---@return table|nil
 function M.receipt(name)
-    local r = db.receipt_get(name)
+    local r = store.receipt_get(name)
     if r then
         return r
     end
-    -- Legacy: import an on-disk receipt into the db, then return it.
+    -- Legacy: import an on-disk receipt into the store, then return it.
     local f = io.open(receipt_path(name), "r")
     if not f then
         return nil
@@ -55,7 +55,7 @@ function M.receipt(name)
     if not (ok and type(data) == "table") then
         return nil
     end
-    db.receipt_set(name, data)
+    store.receipt_set(name, data)
     return data
 end
 
@@ -117,7 +117,17 @@ function M.install(name, opts, cb)
 
     paths.ensure()
     local dir = paths.package_dir(name)
-    vim.fn.delete(dir, "rf")
+    -- Keep the working install as a sibling backup while the new one builds, so a failed
+    -- update restores the previous version instead of leaving the package uninstalled.
+    local bak = dir .. ".bak"
+    vim.fn.delete(bak, "rf")
+    local backed_up = false
+    if vim.fn.isdirectory(dir) == 1 then
+        backed_up = pcall(vim.uv.fs_rename, dir, bak) and vim.fn.isdirectory(bak) == 1
+        if not backed_up then
+            vim.fn.delete(dir, "rf") -- couldn't back up; fall back to a clean reinstall
+        end
+    end
     vim.fn.mkdir(dir, "p")
 
     local bins = {}
@@ -140,10 +150,14 @@ function M.install(name, opts, cb)
     handler.install(ctx, function(err)
         if err then
             vim.fn.delete(dir, "rf")
+            if backed_up then
+                pcall(vim.uv.fs_rename, bak, dir) -- restore the previous working install
+            end
             cb(err)
             return
         end
-        db.receipt_set(name, { type = p.type, version = p.version, bins = bins })
+        vim.fn.delete(bak, "rf") -- success: drop the backup
+        store.receipt_set(name, { type = p.type, version = p.version, bins = bins })
         cb(nil)
     end)
 end
@@ -158,7 +172,7 @@ function M.remove(name)
             vim.fn.delete(paths.bin() .. "/" .. binname)
         end
     end
-    db.receipt_remove(name)
+    store.receipt_remove(name)
     vim.fn.delete(paths.package_dir(name), "rf")
 end
 

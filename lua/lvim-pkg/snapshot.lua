@@ -285,4 +285,45 @@ function M.all_full()
     return out
 end
 
+--- Export the active snapshot's full version set to an arbitrary file — a shareable lockfile
+--- (same JSON shape as a snapshot file) for reproducible setups across machines / a team.
+---@param dest string  Absolute path to write
+---@return boolean ok, string? err
+function M.export(dest)
+    if not dest or dest == "" then
+        return false, "destination path required"
+    end
+    local f = io.open(dest, "w")
+    if not f then
+        return false, "cannot write: " .. dest
+    end
+    f:write(pretty(read()))
+    f:close()
+    return true
+end
+
+--- Import a lockfile from `src` into a NEW snapshot named `name` (default: the file's
+--- basename). Does not switch the active set — call `select(name)` (then restore its diff) to
+--- apply it.
+---@param src string    Absolute path to read
+---@param name? string  Snapshot name to create (default basename of src)
+---@return boolean ok, string? err
+function M.import(src, name)
+    local f = io.open(src, "r")
+    if not f then
+        return false, "cannot read: " .. tostring(src)
+    end
+    local content = f:read("*a")
+    f:close()
+    local ok, data = pcall(vim.json.decode, content)
+    if not (ok and type(data) == "table") then
+        return false, "not valid JSON: " .. tostring(src)
+    end
+    name = (name and name ~= "") and name or vim.fn.fnamemodify(src, ":t:r")
+    if not M.write_file(name, data) then
+        return false, "could not write snapshot: " .. tostring(name)
+    end
+    return true
+end
+
 return M

@@ -57,23 +57,18 @@ function M.ensure()
     vim.fn.mkdir(M.ts(), "p")
 end
 
---- Prepend our bin/ (and the legacy mason.nvim bin, for tools installed before the
---- migration) to PATH for the current session so installed tools resolve.
+--- Prepend our bin/ to PATH for the current session so installed tools resolve.
 ---@return nil
 function M.ensure_path()
-    local sep = vim.fn.has("win32") == 1 and ";" or ":"
-    local function prepend(bin)
-        if bin == "" or vim.fn.isdirectory(bin) == 0 then
-            return
-        end
-        local path = vim.env.PATH or ""
-        if not ("" .. sep .. path .. sep):find(sep .. bin .. sep, 1, true) then
-            vim.env.PATH = bin .. sep .. path
-        end
+    local bin = M.bin()
+    if bin == "" or vim.fn.isdirectory(bin) == 0 then
+        return
     end
-    -- Legacy mason bin first (lower priority), then ours on top.
-    prepend(vim.fn.stdpath("data") .. "/mason/bin")
-    prepend(M.bin())
+    local sep = vim.fn.has("win32") == 1 and ";" or ":"
+    local path = vim.env.PATH or ""
+    if not ("" .. sep .. path .. sep):find(sep .. bin .. sep, 1, true) then
+        vim.env.PATH = bin .. sep .. path
+    end
 end
 
 return M

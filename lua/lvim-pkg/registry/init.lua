@@ -1,8 +1,9 @@
 -- lvim-pkg: Mason registry reader.
 -- Loads the registry index (registry.json) and exposes package metadata for both
--- the installer and the control panel.  Fetches its own copy from the mason-registry
--- GitHub release (registry.json.zip) so the catalogue stays fresh WITHOUT mason.nvim;
--- falls back to the copy mason.nvim may already have downloaded, then to a stale copy.
+-- the installer and the control panel.  Fetches its OWN copy of the catalogue from
+-- the mason-registry GitHub release (registry.json.zip) into root/registry.json, so
+-- the data stays fresh WITHOUT mason.nvim.  Only the catalogue JSON is consumed —
+-- never mason.nvim's runtime.
 --
 ---@module "lvim-pkg.registry"
 
@@ -21,15 +22,6 @@ local index = nil
 ---@type table<string, string>|nil  bin name → owning package name
 local bin_index = nil
 
---- Candidate registry index locations, in priority order.
----@return string[]
-local function candidates()
-    return {
-        paths.registry_file(),
-        vim.fn.stdpath("data") .. "/mason/registries/github/mason-org/mason-registry/registry.json",
-    }
-end
-
 --- Load and cache the registry array (empty table when no index is found).
 ---@param force? boolean  Re-read from disk
 ---@return table[]
@@ -38,16 +30,13 @@ function M.load(force)
         return cache
     end
     cache, index, bin_index = {}, nil, nil
-    for _, path in ipairs(candidates()) do
-        local f = io.open(path, "r")
-        if f then
-            local content = f:read("*a")
-            f:close()
-            local ok, data = pcall(vim.json.decode, content)
-            if ok and type(data) == "table" then
-                cache = data
-                break
-            end
+    local f = io.open(paths.registry_file(), "r")
+    if f then
+        local content = f:read("*a")
+        f:close()
+        local ok, data = pcall(vim.json.decode, content)
+        if ok and type(data) == "table" then
+            cache = data
         end
     end
     return cache

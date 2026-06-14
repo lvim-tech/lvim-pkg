@@ -2,10 +2,8 @@
 -- Resolves package metadata from the Mason registry index and installs via our
 -- own engine (lvim-pkg.install) — no dependency on mason.nvim.  Install progress
 -- is surfaced through an optional on_progress callback that lvim-installer renders.
---
--- Transition note: is_installed also recognises tools still present in the old
--- mason.nvim bin directory, so already-installed tools are not re-offered while
--- migrating.
+-- `is_installed` counts ONLY our own install path; tools left over in an old
+-- mason.nvim tree are not consulted (no migration — see the README).
 --
 ---@module "lvim-pkg.backends.mason"
 
@@ -36,8 +34,7 @@ end
 ---@param name string
 ---@return boolean
 function B.is_installed(name)
-    -- Only our own install path counts as installed. Tools that exist solely in the
-    -- legacy mason.nvim tree are offered as fresh installs (no migration).
+    -- Only our own install path counts as installed (no mason.nvim tree lookup).
     return install.is_installed(pkg_name(name))
 end
 

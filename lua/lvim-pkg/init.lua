@@ -11,7 +11,6 @@ local loader = require("lvim-pkg.loader")
 local pins = require("lvim-pkg.pins")
 local data = require("lvim-pkg.data")
 local cli = require("lvim-pkg.core.cli")
-local purl = require("lvim-pkg.registry.purl")
 local db = require("lvim-pkg.db")
 local registry = require("lvim-pkg.registry")
 local registry_ts = require("lvim-pkg.registry.ts")
@@ -84,9 +83,7 @@ function M.is_installed(kind, name)
     return b ~= nil and b.is_installed(name)
 end
 
---- Whether a package is installed in OUR path (has our receipt), as opposed to
---- only existing in the legacy mason.nvim tree (which counts as installed for
---- runtime but should be reinstalled to migrate it into our path).
+--- Whether a package is installed in our managed path (has our receipt).
 ---@param name string
 ---@return boolean
 function M.is_managed(name)
@@ -94,21 +91,11 @@ function M.is_managed(name)
     return ok and install.is_installed(name) or false
 end
 
---- Install directory of a package: ours if present, else the legacy mason.nvim
---- package dir (so configs that point at auxiliary files keep working during the
---- transition). Falls back to our path when neither exists yet.
+--- Install directory of a package, under our managed root.
 ---@param name string
 ---@return string
 function M.package_path(name)
-    local lp = require("lvim-pkg.paths").package_dir(name)
-    if vim.fn.isdirectory(lp) == 1 then
-        return lp
-    end
-    local mp = vim.fn.stdpath("data") .. "/mason/packages/" .. name
-    if vim.fn.isdirectory(mp) == 1 then
-        return mp
-    end
-    return lp
+    return require("lvim-pkg.paths").package_dir(name)
 end
 
 --- Plugin pin-menu git data (cascading: tags by branch, commits by ref).
@@ -196,18 +183,6 @@ function M.installed_version(name)
         local r = install.receipt(name)
         if r and r.version then
             return r.version
-        end
-    end
-    -- Fallback: read the old mason.nvim receipt file directly (no plugin dependency)
-    -- so packages installed before the migration still show their version.
-    local mp = vim.fn.stdpath("data") .. "/mason/packages/" .. name .. "/mason-receipt.json"
-    local fh = io.open(mp, "r")
-    if fh then
-        local content = fh:read("*a")
-        fh:close()
-        local dok, data = pcall(vim.json.decode, content)
-        if dok and type(data) == "table" and data.source and data.source.id then
-            return (purl.parse(data.source.id) or {}).version
         end
     end
     return nil

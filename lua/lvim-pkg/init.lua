@@ -251,7 +251,20 @@ function M.remove(kind, names, cb)
         end
         return
     end
-    b.remove(names, cb)
+    -- Notify subscribers BEFORE the files are deleted, so a domain (e.g. lvim-ls) can stop an
+    -- LSP client whose tool is about to vanish — avoiding server crashes / stale in-flight
+    -- responses. A matching "removed" fires after, for post-delete cleanup of any straggler.
+    for _, name in ipairs(names) do
+        M.emit("removing", kind, name)
+    end
+    b.remove(names, function(err)
+        for _, name in ipairs(names) do
+            M.emit("removed", kind, name)
+        end
+        if cb then
+            cb(err)
+        end
+    end)
 end
 
 -- ── Plugin introspection (reported by the host loader) ────────────────────────
@@ -356,7 +369,8 @@ function M.register_provider(name, fn)
 end
 
 --- Subscribe to an installer event (decoupling — domains never get called directly).
---- Events: "installing" (active: boolean).
+--- Events: "installing" (active: boolean); "removing" (kind, name) — fired BEFORE a
+--- package's files are deleted; "removed" (kind, name) — fired after.
 ---@param event string
 ---@param fn fun(...)
 function M.on(event, fn)

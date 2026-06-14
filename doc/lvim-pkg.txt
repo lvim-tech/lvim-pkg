@@ -145,7 +145,8 @@ prompt aggregates every provider's missing items for the opened filetype.
 
   pkg.register_provider(name, fn)   fn(ft) -> LvimPkgItem[]
   pkg.missing_for_ft(ft)            LvimPkgItem[] (missing, not declined)
-  pkg.on(event, fn)                 subscribe to installer events
+  pkg.on(event, fn)                 installer events: "installing",
+                                    "removing", "removed"
   pkg.emit(event, ...)              fire subscribers
 
 ------------------------------------------------------------------------------

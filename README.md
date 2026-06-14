@@ -126,7 +126,7 @@ pkg.register_provider(name, function(ft)
     return { item, ... }
 end)
 pkg.missing_for_ft(ft) -- LvimPkgItem[] (missing, not declined)
-pkg.on(event, fn) -- subscribe to installer events (e.g. "installing")
+pkg.on(event, fn) -- installer events: "installing", "removing", "removed"
 pkg.emit(event, ...) -- fire subscribers
 ```
 

@@ -1,0 +1,236 @@
+*lvim-pkg.txt*          The data + operations hub for the LVIM ecosystem
+
+==============================================================================
+CONTENTS                                                          *lvim-pkg*
+
+  1. Introduction ........................... |lvim-pkg-intro|
+  2. Installation ........................... |lvim-pkg-installation|
+  3. Setup & configuration .................. |lvim-pkg-setup|
+  4. Layout on disk ......................... |lvim-pkg-layout|
+  5. API .................................... |lvim-pkg-api|
+       Backend operations ................... |lvim-pkg-api-operations|
+       Versions ............................. |lvim-pkg-api-versions|
+       Requirement registry ................. |lvim-pkg-api-requirements|
+       Plugin introspection ................. |lvim-pkg-api-plugins|
+       Version pins ......................... |lvim-pkg-api-pins|
+       Snapshots ............................ |lvim-pkg-api-snapshots|
+       Declines ............................. |lvim-pkg-api-declines|
+       Registry refresh ..................... |lvim-pkg-api-registry|
+  6. Types .................................. |lvim-pkg-types|
+  7. Ecosystem .............................. |lvim-pkg-ecosystem|
+
+==============================================================================
+1. INTRODUCTION                                            *lvim-pkg-intro*
+
+lvim-pkg is the single data + operations hub for the LVIM installable
+ecosystem: it answers every "what is available / installed / missing"
+question and performs every install / update / remove across three backends.
+
+  Kind       Backend                       Handles ~
+  mason      mason-registry                LSP servers, linters, formatters,
+                                           DAP, the tree-sitter CLI
+  parser     treesitter-parser-registry    treesitter parsers + their queries
+  plugin     vim.pack                      Neovim plugins
+
+Both the Mason and the parser backends are self-contained — no mason.nvim and
+no nvim-treesitter. Each consumes an editor-agnostic community catalogue and
+installs from source itself: Mason via npm / pypi / golang / cargo / github;
+parsers by compiling the grammar with the tree-sitter CLI and dropping the
+`.so` + query files on the runtimepath, so Neovim's built-in |vim.treesitter|
+uses them. Each catalogue is fetched once on first setup (when its on-disk
+cache is missing) and refreshed only on demand.
+
+lvim-pkg has no UI (that is lvim-installer) and no editor runtime (LSP attach
+lives in lvim-lsp, treesitter highlighting in lvim-ts). Domain plugins depend
+on lvim-pkg; lvim-pkg depends on nothing in the ecosystem.
+
+==============================================================================
+2. INSTALLATION                                     *lvim-pkg-installation*
+
+Requires `kkharji/sqlite.lua` — the database backing pins, install receipts
+and per-filetype declines.
+
+Ships with LVIM IDE, loaded early (`lazy = false`, high priority) because
+other plugins query it during their own setup.
+
+Standalone (lazy.nvim): >lua
+  {
+      "lvim-tech/lvim-pkg",
+      lazy = false,
+      priority = 1000,
+      dependencies = { "kkharji/sqlite.lua" },
+      opts = { ensure_cli = true },   -- bootstrap the tree-sitter CLI
+  }
+<
+==============================================================================
+3. SETUP & CONFIGURATION                                   *lvim-pkg-setup*
+
+                                                         *lvim-pkg.setup()*
+`setup(opts)` merges the given options into the live defaults in place, so
+every `require("lvim-pkg.config")` reader sees the effective values. >lua
+  require("lvim-pkg").setup({
+      root = vim.fn.stdpath("data") .. "/lvim-pkgs",
+      ensure_cli = true,    -- install the tree-sitter CLI on setup when missing
+      snapshot_dir = nil,   -- snapshot dir (default: <config>/.snapshots)
+  })
+<
+Fields (|LvimPkgConfig|):
+
+  root          string      Unified install root (subfolders packages/ bin/
+                            ts/). Default: stdpath("data").."/lvim-pkgs".
+  ensure_cli    boolean     Install the tree-sitter CLI on first setup when
+                            missing. Default: true.
+  snapshot_dir  string|nil  Directory holding the version snapshots and the
+                            `active` marker. Default: <config>/.snapshots.
+
+==============================================================================
+4. LAYOUT ON DISK                                         *lvim-pkg-layout*
+
+Everything lvim-pkg installs lives under `root`:
+
+  packages/         Mason binaries
+  bin/              linked executables, added to $PATH
+  ts/parser         treesitter parsers   (added to the runtimepath)
+  ts/queries        treesitter queries   (added to the runtimepath)
+  lvim-pkg.db       SQLite: pins, install receipts, per-filetype declines
+  registry.json     cached Mason catalogue
+  ts-registry.json  cached parser catalogue
+
+Neovim plugins are NOT here — |vim.pack| owns them under
+`site/pack/core/opt`. Catalogues download once when their cache file is
+missing; there is no periodic/TTL refresh. Force a re-download with
+`:LvimInstaller update-registry [mason|ts|all]` (the command lives in
+lvim-installer).
+
+==============================================================================
+5. API                                                       *lvim-pkg-api*
+
+  local pkg = require("lvim-pkg")
+
+------------------------------------------------------------------------------
+BACKEND OPERATIONS                                *lvim-pkg-api-operations*
+
+`kind` is one of "mason", "parser", "plugin".
+
+  pkg.available(kind)            string[]
+  pkg.installed(kind)            string[]
+  pkg.is_installed(kind, name)   boolean
+  pkg.install(kind, items, cb, opts)
+  pkg.update(kind, names, cb)
+  pkg.remove(kind, names, cb)
+  pkg.backend(kind)              the backend module, or nil
+
+Argument shapes are backend-specific: Mason and parser take names; plugin
+takes |vim.pack| specs.
+
+------------------------------------------------------------------------------
+VERSIONS                                            *lvim-pkg-api-versions*
+
+  pkg.installed_version(name)             string|nil (Mason package version)
+  pkg.available_versions(kind, name, cb)  async; cb(string[]|nil), Mason only
+  pkg.parser_installed_version(lang)      string|nil (grammar revision)
+  pkg.is_managed(name)                    installed in OUR path vs legacy mason
+  pkg.package_path(name)                  install dir (ours, else legacy mason)
+
+------------------------------------------------------------------------------
+REQUIREMENT REGISTRY                            *lvim-pkg-api-requirements*
+
+Domain plugins register a provider during their own setup(); the unified
+prompt aggregates every provider's missing items for the opened filetype.
+
+  pkg.register_provider(name, fn)   fn(ft) -> LvimPkgItem[]
+  pkg.missing_for_ft(ft)            LvimPkgItem[] (missing, not declined)
+  pkg.on(event, fn)                 subscribe to installer events
+  pkg.emit(event, ...)              fire subscribers
+
+------------------------------------------------------------------------------
+PLUGIN INTROSPECTION                                 *lvim-pkg-api-plugins*
+
+Reported by the host loader.
+
+  pkg.register_plugins(map)              host registers the full spec set once
+  pkg.record_load(name, reason, time)    host records each load
+  pkg.plugins()                          rich info for every plugin
+  pkg.plugin_info(name)                  rich info for one
+  pkg.plugin_stats()                     { loaded, total }
+  pkg.check_outdated(cb, on_progress)    async: plugins with an update
+  pkg.parser_outdated(lang)              last-check result for a parser
+  pkg.check_parsers_outdated(cb, on_progress)
+
+Plugin git data (the pin menu): >lua
+  pkg.plugin_branches(name) / plugin_default_branch(name) / plugin_current(name)
+  pkg.plugin_tags(name) / plugin_commits(name, ref) / plugin_newest_tag(name)
+  pkg.plugin_resolve_tag(name, prefix) / plugin_branch_tip(name, branch)
+  pkg.plugin_fetch(name, cb) / plugin_checkout(name, ref)
+  pkg.plugin_update_branch(name, branch)
+  pkg.load_tags(cb) / git_log(name) / load_git_log(name, cb)
+<
+------------------------------------------------------------------------------
+VERSION PINS                                            *lvim-pkg-api-pins*
+
+Per kind; a git ref for plugins. `reftype` is "tag" or "branch"; `branch` is
+the branch context for a commit/tag.
+
+  pkg.pin(kind, name, version, reftype, branch)
+  pkg.get_pin(kind, name)        string|nil
+  pkg.get_pin_full(kind, name)   { version, reftype, branch }|nil
+  pkg.pins()                     kind -> name -> version
+  pkg.pins_full(kind)            name -> full record
+  pkg.unpin(kind, name)
+
+------------------------------------------------------------------------------
+SNAPSHOTS                                          *lvim-pkg-api-snapshots*
+
+A snapshot pins the whole installed set (each plugin's git HEAD, each Mason
+package's version) to a named file; selecting one and restoring its diff
+checks out / reinstalls only what differs.
+
+  pkg.snapshots()                string[]
+  pkg.active_snapshot()          string
+  pkg.select_snapshot(name)      boolean
+  pkg.snapshot_save(name)        ok, err?
+  pkg.snapshot_diff()            { plugins = {...}, mason = {...} }
+  pkg.snapshot_restore(diff, cb, on_progress)
+
+------------------------------------------------------------------------------
+DECLINES                                            *lvim-pkg-api-declines*
+
+Per-filetype "do not offer these again". missing_for_ft filters these out and
+the prompt stops offering them.
+
+  pkg.decline(ft, names)         names: string[]
+  pkg.undecline(ft, name)        re-enable one
+  pkg.declined()                 { { ft = "...", name = "..." }, ... }
+
+------------------------------------------------------------------------------
+REGISTRY REFRESH                                    *lvim-pkg-api-registry*
+
+  pkg.update_registry(which, cb, force)
+
+`which` is "mason", "ts" or "all" (default "all"); `force` ignores the cache
+and re-downloads now.
+
+==============================================================================
+6. TYPES                                                   *lvim-pkg-types*
+
+                                                            *LvimPkgItem*
+  { kind = "mason"|"parser"|"plugin", name = "...", label? = "...",
+    group? = "..." }
+
+A domain plugin registers a provider during its own setup(): >lua
+  require("lvim-pkg").register_provider("ts", function(ft)
+      local lang = require("lvim-ts").missing_for_ft(ft)
+      return lang
+          and { { kind = "parser", name = lang, label = "parser: " .. lang } }
+          or {}
+  end)
+<
+==============================================================================
+7. ECOSYSTEM                                           *lvim-pkg-ecosystem*
+
+  lvim-installer   the UI for this engine
+  lvim-ls          LSP engine (tool requirement provider)
+  lvim-ts          treesitter runtime (parser requirement provider)
+  lvim-utils       shared UI / notify
+
+vim:tw=78:ts=8:noet:ft=help:norl:

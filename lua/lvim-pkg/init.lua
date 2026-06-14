@@ -151,6 +151,7 @@ function M.plugin_branch_tip(name, branch)
 end
 
 ---@param name string
+---@param cb? fun()
 ---@return nil
 function M.plugin_fetch(name, cb)
     return loader.plugin_fetch(name, cb)
@@ -186,6 +187,9 @@ function M.plugin_commits(name, ref)
     return loader.plugin_commits(name, ref)
 end
 
+--- The recorded version of an installed Mason package, or nil when unknown.
+---@param name string
+---@return string|nil
 function M.installed_version(name)
     local ok, install = pcall(require, "lvim-pkg.install")
     if ok then

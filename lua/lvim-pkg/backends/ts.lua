@@ -136,6 +136,9 @@ local function fetch_repo(url, ref, cb)
                     break
                 end
             end
+            if not root then
+                return cb("extract: no directory in archive")
+            end
             cb(nil, root)
         end)
     end)
@@ -226,6 +229,7 @@ local function install_one(lang, cb, seen)
                 if err then
                     return cb(err)
                 end
+                ---@cast qdir string  fetch_repo guarantees a dir when err is nil
                 copy_queries(qdir, lang)
                 cb(nil)
             end)
@@ -239,6 +243,7 @@ local function install_one(lang, cb, seen)
                 if e2 then
                     return cb(e2)
                 end
+                ---@cast pdir string  fetch_repo guarantees a dir when err is nil
                 local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
                 compile(grammar, parser_dir() .. "/" .. lang .. ".so", function(e3)
                     if e3 then
@@ -332,6 +337,7 @@ function B.install_queries(name, cb)
                 if err then
                     return cb(err)
                 end
+                ---@cast qdir string  fetch_repo guarantees a dir when err is nil
                 copy_queries(qdir, name)
                 cb(nil)
             end)
@@ -342,6 +348,7 @@ function B.install_queries(name, cb)
                 if err then
                     return cb(err)
                 end
+                ---@cast pdir string  fetch_repo guarantees a dir when err is nil
                 local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
                 copy_queries(grammar, name)
                 cb(nil)

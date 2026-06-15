@@ -22,6 +22,8 @@ It has **no UI** (that is `lvim-installer`) and **no editor runtime** (LSP attac
 lives in `lvim-lsp`, treesitter highlighting in `lvim-ts`). Domain plugins depend
 on `lvim-pkg`; `lvim-pkg` depends on nothing in the ecosystem.
 
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://github.com/lvim-tech/lvim-pkg/blob/main/LICENSE)
+
 ## Installation
 
 No Lua-plugin dependencies — install state is plain JSON under the install root (see
@@ -33,7 +35,7 @@ present.
 ### LVIM IDE
 
 Ships with LVIM IDE, loaded early (`lazy = false`, high priority) because other
-plugins query it during their own setup. Override via your user module
+plugins query it during their own setup. Override its options in your user module
 (`lua/modules/user/init.lua`):
 
 ```lua
@@ -44,15 +46,39 @@ modules["lvim-tech/lvim-pkg"] = {
 }
 ```
 
-### Standalone (lazy.nvim)
+### lazy.nvim
 
-```text
-{
-  "lvim-tech/lvim-pkg",
-  lazy = false,
-  priority = 1000,
-  opts = { ensure_cli = true },   -- bootstrap the tree-sitter CLI
+```lua
+return {
+    "lvim-tech/lvim-pkg",
+    lazy = false,
+    priority = 1000, -- load early: other plugins query it during their setup
+    config = function()
+        require("lvim-pkg").setup({ ensure_cli = true })
+    end,
 }
+```
+
+### Native (vim.pack / packadd)
+
+```lua
+-- In your init.lua, after the plugin is on the runtimepath:
+vim.pack.add({
+    { src = "https://github.com/lvim-tech/lvim-pkg" },
+})
+
+require("lvim-pkg").setup({ ensure_cli = true })
+```
+
+### packer.nvim
+
+```lua
+use({
+    "lvim-tech/lvim-pkg",
+    config = function()
+        require("lvim-pkg").setup({ ensure_cli = true })
+    end,
+})
 ```
 
 ## Usage

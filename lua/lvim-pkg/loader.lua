@@ -498,21 +498,25 @@ function L.plugin_resolve_tag(name, prefix)
 end
 
 --- Current checkout state: how the plugin is pinned right now (from git, not config).
---- kind = "tag" (exact tag), "branch" (on a local branch), or "commit" (detached).
+--- kind = "branch" (HEAD attached to a branch — tracks it, advanceable), "tag" (DETACHED on an exact tag —
+--- frozen), or "commit" (detached, no tag). BRANCH is checked FIRST: a head on a branch tracks that branch
+--- even when its tip commit is also tagged (maintainers tag releases ON the branch), so update must still
+--- advance it — only a detached head sitting on a tag is frozen. (The display's Tag […] still shows via the
+--- separate `tags`/`branches` info, so a tagged tip is not lost.)
 ---@param name string
----@return { kind: "tag"|"branch"|"commit", value: string }|nil
+---@return { kind: "branch"|"tag"|"commit", value: string }|nil
 function L.plugin_current(name)
     local reg = registry[name]
     if not reg or reg.dir or not reg.path then
         return nil
     end
-    local tag = git_lines(name, { "describe", "--tags", "--exact-match" })
-    if tag[1] and vim.trim(tag[1]) ~= "" then
-        return { kind = "tag", value = vim.trim(tag[1]) }
-    end
     local br = git_lines(name, { "symbolic-ref", "--short", "-q", "HEAD" })
     if br[1] and vim.trim(br[1]) ~= "" then
         return { kind = "branch", value = vim.trim(br[1]) }
+    end
+    local tag = git_lines(name, { "describe", "--tags", "--exact-match" })
+    if tag[1] and vim.trim(tag[1]) ~= "" then
+        return { kind = "tag", value = vim.trim(tag[1]) }
     end
     local sha = git_lines(name, { "rev-parse", "--short", "HEAD" })
     return sha[1] and { kind = "commit", value = vim.trim(sha[1]) } or nil

@@ -185,10 +185,17 @@ local function compile(dir, out, cb)
     end)
 end
 
---- Copy every .scm file from `qroot` (and qroot/queries) into queries/<lang>/.
+--- Copy every .scm file into queries/<lang>/. When `subdir` is given (a `self_contained` entry's
+--- `source.queries_dir`, e.g. zsh's "nvim-queries"), the Neovim queries live ONLY in that subdirectory of the
+--- parser repo, so copy from there exclusively — the repo root / `queries/` may hold the grammar's own
+--- upstream (non-Neovim) queries. Without a `subdir`, use the default heuristic: `qroot` and `qroot/queries`.
 ---@param qroot string
 ---@param lang string
-local function copy_queries(qroot, lang)
+---@param subdir? string  explicit queries subdirectory within `qroot` (registry `source.queries_dir`)
+local function copy_queries(qroot, lang, subdir)
+    if not qroot then
+        return
+    end
     local dest = queries_dir() .. "/" .. lang
     vim.fn.mkdir(dest, "p")
     local function copy_from(d)
@@ -201,8 +208,12 @@ local function copy_queries(qroot, lang)
             end
         end
     end
-    copy_from(qroot)
-    copy_from(qroot and (qroot .. "/queries"))
+    if subdir and subdir ~= "" then
+        copy_from(qroot .. "/" .. subdir)
+    else
+        copy_from(qroot)
+        copy_from(qroot .. "/queries")
+    end
 end
 
 --- Install one language: its `requires` dependencies first, then its parser (.so)
@@ -250,7 +261,10 @@ local function install_one(lang, cb, seen)
                     if e3 then
                         return cb("compile " .. lang .. ": " .. e3)
                     end
-                    copy_queries(qdir or grammar, lang) -- self_contained: queries live in the parser repo
+                    -- external_queries: `qdir` is the queries repo. self_contained: no queries repo (qdir nil),
+                    -- so queries live in the parser repo — under `source.queries_dir` when the entry names one.
+                    local sub = (not qdir) and src.queries_dir or nil
+                    copy_queries(qdir or grammar, lang, sub)
                     record_installed(lang, function()
                         cb(nil)
                     end)

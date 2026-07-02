@@ -3,7 +3,9 @@
 -- require("lvim-pkg").setup({ root = ... })), with a subfolder per kind:
 --   packages/  Mason-style binary packages (one subdir each)
 --   bin/       linked executables (added to PATH)
---   ts/        nvim-treesitter install_dir (ts/parser/*.so, added to rtp)
+--   ts/        OUR tree-sitter dir (ts/parser/*.so + ts/queries, added to rtp) —
+--              it mirrors nvim-treesitter's install_dir layout, but lvim-pkg is
+--              self-contained WITHOUT nvim-treesitter.
 -- (Neovim plugins are NOT here — vim.pack owns them under site/pack/core/opt.)
 --
 ---@module "lvim-pkg.paths"
@@ -33,7 +35,8 @@ function M.bin()
     return root() .. "/bin"
 end
 
----@return string  nvim-treesitter install_dir (parsers under ts/parser)
+---@return string  Our tree-sitter dir (parsers under ts/parser, queries under ts/queries),
+---                mirroring nvim-treesitter's install_dir layout but managed by lvim-pkg itself
 function M.ts()
     return root() .. "/ts"
 end
@@ -44,9 +47,14 @@ function M.package_dir(name)
     return M.packages() .. "/" .. name
 end
 
----@return string  Local cached registry index
+---@return string  Local cached Mason registry index
 function M.registry_file()
     return root() .. "/registry.json"
+end
+
+---@return string  Local cached tree-sitter parser registry index
+function M.ts_registry_file()
+    return root() .. "/ts-registry.json"
 end
 
 --- Create the managed subdirectories if missing.

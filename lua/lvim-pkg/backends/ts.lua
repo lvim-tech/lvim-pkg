@@ -12,6 +12,7 @@ local registry = require("lvim-pkg.registry.ts")
 local util = require("lvim-pkg.install.util")
 local paths = require("lvim-pkg.paths")
 local store = require("lvim-pkg.store")
+local config = require("lvim-pkg.config")
 
 local B = { kind = "parser" }
 
@@ -371,7 +372,7 @@ function B.install(names, cb)
         if total == 0 then
             return cb(nil)
         end
-        local cap = math.max(1, require("lvim-pkg.config").max_concurrency or 4)
+        local cap = math.max(1, config.max_concurrency or 4)
         local next_idx, done, first_err = 0, 0, nil
         local function start_next()
             next_idx = next_idx + 1

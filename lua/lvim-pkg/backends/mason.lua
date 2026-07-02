@@ -9,6 +9,8 @@
 
 local registry = require("lvim-pkg.registry")
 local install = require("lvim-pkg.install")
+local config = require("lvim-pkg.config")
+local snapshot = require("lvim-pkg.snapshot")
 
 local B = { kind = "mason" }
 
@@ -60,7 +62,7 @@ function B.install(names, cb, opts)
             opts.on_progress(name, "pending", "Queued...")
         end
     end
-    local cap = math.max(1, require("lvim-pkg.config").max_concurrency or 4)
+    local cap = math.max(1, config.max_concurrency or 4)
     local next_idx, done = 0, 0
     local function start_next()
         next_idx = next_idx + 1
@@ -101,7 +103,6 @@ end
 ---@param names string[]
 ---@param cb? fun(results: table<string, string|true>)
 function B.update(names, cb)
-    local snapshot = require("lvim-pkg.snapshot")
     local stale, uptodate = {}, {}
     for _, name in ipairs(names) do
         local r = install.receipt(pkg_name(name))

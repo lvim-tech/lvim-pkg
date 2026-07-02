@@ -9,6 +9,9 @@
 local paths = require("lvim-pkg.paths")
 local registry = require("lvim-pkg.registry")
 local store = require("lvim-pkg.store")
+local snapshot = require("lvim-pkg.snapshot")
+local purl = require("lvim-pkg.registry.purl")
+local versions = require("lvim-pkg.install.versions")
 
 local M = {}
 
@@ -110,7 +113,7 @@ function M.install(name, opts, cb)
     -- Honour the active snapshot's recorded version (the full set, not just explicit
     -- pins), so a reproducibility record installs that exact version. Falls back to the
     -- registry default when the snapshot tracks latest (no entry).
-    local recorded = require("lvim-pkg.snapshot").get("mason", name)
+    local recorded = snapshot.get("mason", name)
     if recorded and recorded ~= "" then
         p = vim.tbl_extend("force", p, { version = recorded })
     end
@@ -188,8 +191,8 @@ function M.versions(name, cb)
     if not id then
         return cb(nil)
     end
-    local p = require("lvim-pkg.registry.purl").parse(id)
-    require("lvim-pkg.install.versions").fetch(p, cb)
+    local p = purl.parse(id)
+    versions.fetch(p, cb)
 end
 
 return M

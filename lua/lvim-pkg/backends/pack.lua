@@ -5,6 +5,8 @@
 --
 ---@module "lvim-pkg.backends.pack"
 
+local loader = require("lvim-pkg.loader")
+
 local B = { kind = "plugin" }
 
 ---@return boolean
@@ -91,7 +93,6 @@ function B.remove(names, cb)
     local ok, err = pcall(vim.pack.del, names, { force = true })
     if ok then
         -- Drop the removed plugins from the data store so the installer list updates.
-        local loader = require("lvim-pkg.loader")
         for _, name in ipairs(names) do
             loader.unregister(name)
         end

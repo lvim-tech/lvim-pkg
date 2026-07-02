@@ -7,6 +7,7 @@
 --
 ---@module "lvim-pkg.registry"
 
+local config = require("lvim-pkg.config")
 local paths = require("lvim-pkg.paths")
 local purl = require("lvim-pkg.registry.purl")
 local util = require("lvim-pkg.install.util")
@@ -51,7 +52,7 @@ local function fresh(path)
     if not st then
         return false
     end
-    local ttl = require("lvim-pkg.config").registry_ttl
+    local ttl = config.registry_ttl
     if type(ttl) ~= "number" or ttl <= 0 then
         return true
     end

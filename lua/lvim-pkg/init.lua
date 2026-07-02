@@ -6,14 +6,22 @@
 --
 ---@module "lvim-pkg"
 
+local config = require("lvim-pkg.config")
+local paths = require("lvim-pkg.paths")
 local state = require("lvim-pkg.state")
 local loader = require("lvim-pkg.loader")
 local pins = require("lvim-pkg.pins")
 local data = require("lvim-pkg.data")
 local cli = require("lvim-pkg.core.cli")
 local store = require("lvim-pkg.store")
+local snapshot = require("lvim-pkg.snapshot")
 local registry = require("lvim-pkg.registry")
 local registry_ts = require("lvim-pkg.registry.ts")
+
+-- lvim-pkg is deliberately zero-dependency: lvim-utils is an OPTIONAL soft dep, pcall'd so
+-- the plugin still loads without it. When present, utils.merge gives the canonical in-place,
+-- clean array-replace merge; the tbl_deep_extend fallback below is only used when it is absent.
+local ok_utils, utils = pcall(require, "lvim-utils.utils")
 
 local M = {}
 
@@ -35,17 +43,21 @@ end
 ---@param opts? LvimPkgConfig
 ---@return nil
 function M.setup(opts)
-    local config = require("lvim-pkg.config")
-    -- Merge user overrides into the live config (in place, so require()ers see them).
-    for k, v in pairs(opts or {}) do
-        if type(v) == "table" and type(config[k]) == "table" then
-            config[k] = vim.tbl_deep_extend("force", config[k], v)
-        else
-            config[k] = v
+    -- Merge user overrides into the live config IN PLACE, so every require("lvim-pkg.config")
+    -- reader sees them. Prefer lvim-utils.utils.merge (clean array-replace per the merge
+    -- convention); fall back to tbl_deep_extend only when lvim-utils is not available.
+    if ok_utils and utils.merge then
+        utils.merge(config, opts or {})
+    elseif opts then
+        for k, v in pairs(opts) do
+            if type(v) == "table" and type(config[k]) == "table" then
+                config[k] = vim.tbl_deep_extend("force", config[k], v)
+            else
+                config[k] = v
+            end
         end
     end
     -- Make our installer's bin directory available to spawned tools/LSP servers.
-    local paths = require("lvim-pkg.paths")
     paths.ensure()
     paths.ensure_path()
     -- Put our parser/query dir on the rtp and kick off the ts registry refresh.
@@ -95,14 +107,14 @@ end
 ---@param name string
 ---@return string
 function M.package_path(name)
-    return require("lvim-pkg.paths").package_dir(name)
+    return paths.package_dir(name)
 end
 
 --- The managed bin directory holding linked tool executables (added to PATH). Consumers
 --- (e.g. lvim-ls) resolve a tool's binary here instead of assuming the Mason layout.
 ---@return string
 function M.bin_dir()
-    return require("lvim-pkg.paths").bin()
+    return paths.bin()
 end
 
 --- Plugin pin-menu git data (cascading: tags by branch, commits by ref).
@@ -453,20 +465,20 @@ end
 --- Available snapshot names.
 ---@return string[]
 function M.snapshots()
-    return require("lvim-pkg.snapshot").list()
+    return snapshot.list()
 end
 
 --- The active snapshot name.
 ---@return string
 function M.active_snapshot()
-    return require("lvim-pkg.snapshot").active()
+    return snapshot.active()
 end
 
 --- Make `name` the active snapshot (switches the whole version set).
 ---@param name string
 ---@return boolean
 function M.select_snapshot(name)
-    return require("lvim-pkg.snapshot").select(name)
+    return snapshot.select(name)
 end
 
 --- Capture the current state into a named snapshot file: each installed plugin's live
@@ -479,8 +491,7 @@ function M.snapshot_save(name)
     if not name or name == "" then
         return false, "snapshot name required"
     end
-    local snap = require("lvim-pkg.snapshot")
-    local active = require("lvim-pkg.pins").all_full()
+    local active = pins.all_full()
     local data = { plugins = {}, mason = {} }
     for _, info in ipairs(M.plugins()) do
         local commit
@@ -512,7 +523,7 @@ function M.snapshot_save(name)
             end
         end
     end
-    if not snap.write_file(name, data) then
+    if not snapshot.write_file(name, data) then
         return false, "could not write snapshot file"
     end
     return true
@@ -523,10 +534,9 @@ end
 --- left alone). Shape: { plugins = { {name, from, to} }, mason = { {name, from, to} } }.
 ---@return { plugins: table[], mason: table[] }
 function M.snapshot_diff()
-    local snap = require("lvim-pkg.snapshot")
     local out = { plugins = {}, mason = {} }
     for _, info in ipairs(M.plugins()) do
-        local to = snap.get("plugin", info.name)
+        local to = snapshot.get("plugin", info.name)
         local cur = info.commit
         if to and to ~= "" and cur and cur ~= "" and not vim.startswith(to, cur) and not vim.startswith(cur, to) then
             out.plugins[#out.plugins + 1] = { name = info.name, from = cur, to = to }
@@ -535,7 +545,7 @@ function M.snapshot_diff()
     local ok, install = pcall(require, "lvim-pkg.install")
     if ok then
         for _, name in ipairs(install.installed()) do
-            local to = snap.get("mason", name)
+            local to = snapshot.get("mason", name)
             local cur = M.installed_version(name)
             if to and to ~= "" and to ~= cur then
                 out.mason[#out.mason + 1] = { name = name, from = cur, to = to }
@@ -580,7 +590,7 @@ end
 ---@param dest string  Absolute path to write
 ---@return boolean ok, string? err
 function M.snapshot_export(dest)
-    return require("lvim-pkg.snapshot").export(dest)
+    return snapshot.export(dest)
 end
 
 --- Import a lockfile into a new (non-active) snapshot; `select_snapshot` + `snapshot_restore`
@@ -589,7 +599,7 @@ end
 ---@param name? string  Snapshot name to create (default: basename of src)
 ---@return boolean ok, string? err
 function M.snapshot_import(src, name)
-    return require("lvim-pkg.snapshot").import(src, name)
+    return snapshot.import(src, name)
 end
 
 -- ── Declines (per-filetype "do not offer these packages again") ───────────────
@@ -622,8 +632,9 @@ end
 -- ── Registry refresh ──────────────────────────────────────────────────────────
 
 --- Refresh registry catalogues. With `force` (the manual command) it re-downloads now;
---- without it (the on-open / setup path) it only fetches on first-run bootstrap when the
---- cache is missing — there is no periodic refresh, so catalogues update only on demand.
+--- without it (the on-open / setup path) it fetches on first-run bootstrap (no cache) OR
+--- when the cached copy is older than `config.registry_ttl` — a fresh cache is left as-is
+--- (set registry_ttl to 0 to disable the age-based refresh and fetch only when missing).
 ---@param which? "mason"|"ts"|"all"  Default "all"
 ---@param cb? fun()
 ---@param force? boolean

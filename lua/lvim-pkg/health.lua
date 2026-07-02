@@ -114,7 +114,7 @@ function M.check()
         h.info("mason catalogue not cached yet — downloaded on demand")
     end
 
-    local ts_cat = paths.root() .. "/ts-registry.json"
+    local ts_cat = paths.ts_registry_file()
     if vim.fn.filereadable(ts_cat) == 1 then
         h.ok("parser catalogue cached: " .. ts_cat)
     else

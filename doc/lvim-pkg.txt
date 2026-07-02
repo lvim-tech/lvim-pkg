@@ -52,16 +52,36 @@ root (see |lvim-pkg-layout|). External tools are needed only to fetch and
 build packages: curl, tar/unzip, a C compiler (cc) and the per-source
 toolchains (git, npm, python3/pip, go, cargo). See `:checkhealth lvim-pkg`.
 
-Ships with LVIM IDE, loaded early (`lazy = false`, high priority) because
-other plugins query it during their own setup.
+Bundled with LVIM IDE (loaded early — other plugins query it during their own
+setup).
 
-Standalone (lazy.nvim): >lua
+lvim-installer (recommended) — install / update / pin it from the LVIM package
+manager (Plugins tab); it installs through Neovim's built-in |vim.pack|: >vim
+  :LvimInstaller plugins
+<
+lazy.nvim: >lua
   {
       "lvim-tech/lvim-pkg",
       lazy = false,
-      priority = 1000,
-      opts = { ensure_cli = true },   -- bootstrap the tree-sitter CLI
+      priority = 1000,      -- load early: other plugins query it during setup
+      config = function()
+          require("lvim-pkg").setup({ ensure_cli = true })
+      end,
   }
+<
+packer.nvim: >lua
+  use({
+      "lvim-tech/lvim-pkg",
+      config = function()
+          require("lvim-pkg").setup({ ensure_cli = true })
+      end,
+  })
+<
+Native (vim.pack): >lua
+  vim.pack.add({
+      { src = "https://github.com/lvim-tech/lvim-pkg" },
+  })
+  require("lvim-pkg").setup({ ensure_cli = true })
 <
 ==============================================================================
 3. SETUP & CONFIGURATION                                   *lvim-pkg-setup*
@@ -134,8 +154,8 @@ VERSIONS                                            *lvim-pkg-api-versions*
   pkg.installed_version(name)             string|nil (Mason package version)
   pkg.available_versions(kind, name, cb)  async; cb(string[]|nil), Mason only
   pkg.parser_installed_version(lang)      string|nil (grammar revision)
-  pkg.is_managed(name)                    installed in OUR path vs legacy mason
-  pkg.package_path(name)                  install dir (ours, else legacy mason)
+  pkg.is_managed(name)                    installed in our path (has our receipt)
+  pkg.package_path(name)                  install dir under our managed root
   pkg.bin_dir()                           managed bin dir (linked exes, on PATH)
 
 ------------------------------------------------------------------------------
@@ -172,6 +192,12 @@ Plugin git data (the pin menu): >lua
   pkg.plugin_update_branch(name, branch)
   pkg.load_tags(cb) / git_log(name) / load_git_log(name, cb)
 <
+The host's pack loader also calls two submodules directly (not proxied through
+`pkg.*`): `require("lvim-pkg.loader")` for the introspection store above, and
+`require("lvim-pkg.deps").resolve(modules)` to expand each spec's
+`dependencies` into flat module entries (|vim.pack| does not auto-install
+dependencies) before installing.
+
 ------------------------------------------------------------------------------
 VERSION PINS                                            *lvim-pkg-api-pins*
 

@@ -7,6 +7,7 @@
 --
 ---@module "lvim-pkg.registry.ts"
 
+local config = require("lvim-pkg.config")
 local util = require("lvim-pkg.install.util")
 local paths = require("lvim-pkg.paths")
 
@@ -19,15 +20,10 @@ local cache = nil
 ---@type table<string, string>|nil  filetype → lang
 local ft_index = nil
 
----@return string
-local function cache_path()
-    return paths.root() .. "/ts-registry.json"
-end
-
 --- Decode the on-disk registry into the in-memory caches. Returns success.
 ---@return boolean
 local function load_file()
-    local f = io.open(cache_path(), "r")
+    local f = io.open(paths.ts_registry_file(), "r")
     if not f then
         return false
     end
@@ -64,11 +60,11 @@ end
 --- less disables the age check, so any existing cache counts as fresh).
 ---@return boolean
 local function fresh()
-    local st = vim.uv.fs_stat(cache_path())
+    local st = vim.uv.fs_stat(paths.ts_registry_file())
     if not st then
         return false
     end
-    local ttl = require("lvim-pkg.config").registry_ttl
+    local ttl = config.registry_ttl
     if type(ttl) ~= "number" or ttl <= 0 then
         return true
     end
@@ -89,7 +85,7 @@ function M.ensure(cb, force)
         return cb()
     end
     paths.ensure()
-    util.download(URL, cache_path(), function()
+    util.download(URL, paths.ts_registry_file(), function()
         load_file() -- loads the fresh download, or the existing copy if the download failed
         cb()
     end)

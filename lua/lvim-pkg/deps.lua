@@ -22,6 +22,58 @@
 
 local M = {}
 
+--- Load a module's OWN distribution manifest (`lua/<name>/pack.lua`) from its plugin directory, if present.
+--- A dir= (dev) plugin is read from its checkout; an installed plugin from the package opt dir. Returns the
+--- table it exports, or nil (no manifest / unreadable / not on disk yet — e.g. first install before clone).
+---@param repo string   "owner/repo"
+---@param spec table     its module spec (may carry `dir`)
+---@return table|nil
+local function read_pack_manifest(repo, spec)
+    local name = repo:match("([^/]+)$")
+    if not name then
+        return nil
+    end
+    local base = spec.dir or (vim.fn.stdpath("data") .. "/site/pack/core/opt/" .. name)
+    local file = base .. "/lua/" .. name .. "/pack.lua"
+    if vim.fn.filereadable(file) ~= 1 then
+        return nil
+    end
+    local ok, manifest = pcall(dofile, file)
+    return (ok and type(manifest) == "table") and manifest or nil
+end
+
+--- DISTRIBUTION expansion: for every module that ships its own `pack.lua` (an umbrella like lvim-nvim), ensure
+--- each plugin it lists is registered so the package manager installs it — WITHOUT making it a load-order
+--- dependency (so each still loads on its own spec / lazy triggers). A plugin the user ALREADY declared (top
+--- level, with its own config/opts) is left untouched — the user's spec is authoritative; this only FILLS IN
+--- the ones they did not declare. Mutates and returns `modules`. Call BEFORE `M.resolve`.
+---@param modules table<string, table>
+---@return table<string, table>
+function M.bundle(modules)
+    -- Snapshot the roots first; the loop inserts new (install-only) entries as it goes.
+    local roots = {}
+    for repo, spec in pairs(modules) do
+        if type(spec) == "table" then
+            roots[#roots + 1] = repo
+        end
+    end
+    for _, repo in ipairs(roots) do
+        local manifest = read_pack_manifest(repo, modules[repo])
+        local deps = manifest and manifest.dependencies
+        if type(deps) == "table" then
+            for _, dep in ipairs(deps) do
+                local drepo = type(dep) == "string" and dep or (type(dep) == "table" and dep[1] or nil)
+                if drepo and modules[drepo] == nil then
+                    -- Install-only: register it so vim.pack clones it. NOT added to any `dependencies` list,
+                    -- so it loads on its own (lazy) spec — its config is the user's to add.
+                    modules[drepo] = { bundled = true, bundled_by = repo }
+                end
+            end
+        end
+    end
+    return modules
+end
+
 --- Normalize one dependency entry to (repo, spec-without-the-repo).
 ---@param dep string|table
 ---@return string|nil repo, table spec

@@ -165,16 +165,18 @@ end
 
 ---@param name string
 ---@param ref string
----@return string|nil
-function M.plugin_checkout(name, ref)
-    return loader.plugin_checkout(name, ref)
+---@param cb fun(err: string|nil)
+---@return nil
+function M.plugin_checkout(name, ref, cb)
+    return loader.plugin_checkout(name, ref, cb)
 end
 
 ---@param name string
 ---@param branch string
----@return string|nil
-function M.plugin_update_branch(name, branch)
-    return loader.plugin_update_branch(name, branch)
+---@param cb fun(err: string|nil)
+---@return nil
+function M.plugin_update_branch(name, branch, cb)
+    return loader.plugin_update_branch(name, branch, cb)
 end
 
 ---@param name string
@@ -564,26 +566,43 @@ end
 ---@return nil
 function M.snapshot_restore(diff, cb, on_progress)
     cb = cb or function() end
-    for _, p in ipairs(diff.plugins or {}) do
+    local plugins = diff.plugins or {}
+
+    -- After every plugin checkout: reinstall the changed Mason packages, then finish.
+    local function do_mason()
+        local names = {}
+        for _, m in ipairs(diff.mason or {}) do
+            names[#names + 1] = m.name
+        end
+        if #names == 0 then
+            return cb()
+        end
+        M.install("mason", names, function()
+            cb()
+        end, {
+            on_progress = on_progress and function(name, _, action)
+                on_progress("mason", name, action)
+            end or nil,
+        })
+    end
+
+    -- Check out each pinned plugin SEQUENTIALLY and asynchronously (plugin_checkout is async now),
+    -- so a multi-plugin restore never blocks the UI on git; then run the Mason step.
+    local i = 0
+    local function next_plugin()
+        i = i + 1
+        local p = plugins[i]
+        if not p then
+            return do_mason()
+        end
         if on_progress then
             on_progress("plugin", p.name, "checkout")
         end
-        M.plugin_checkout(p.name, p.to)
+        M.plugin_checkout(p.name, p.to, function()
+            next_plugin()
+        end)
     end
-    local names = {}
-    for _, m in ipairs(diff.mason or {}) do
-        names[#names + 1] = m.name
-    end
-    if #names == 0 then
-        return cb()
-    end
-    M.install("mason", names, function()
-        cb()
-    end, {
-        on_progress = on_progress and function(name, _, action)
-            on_progress("mason", name, action)
-        end or nil,
-    })
+    next_plugin()
 end
 
 --- Export the active snapshot's full version set to a shareable lockfile.

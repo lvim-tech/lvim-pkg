@@ -522,41 +522,56 @@ function L.plugin_current(name)
     return sha[1] and { kind = "commit", value = vim.trim(sha[1]) } or nil
 end
 
---- Update a tracked branch to its remote tip (fetch already done by caller).
---- Stays on the branch (hard reset to origin/<branch>).
+--- Update a tracked branch to its remote tip (fetch already done by caller). Stays on the branch
+--- (hard reset to origin/<branch>). ASYNChronous — the git runs off the main thread so the UI never
+--- freezes on the reset; `cb(err)` fires (scheduled) when done (err = nil on success).
 ---@param name string
 ---@param branch string
----@return string|nil  error message on failure (nil on success)
-function L.plugin_update_branch(name, branch)
+---@param cb fun(err: string|nil)
+---@return nil
+function L.plugin_update_branch(name, branch, cb)
     local reg = registry[name]
     if not reg or reg.dir or not reg.path then
-        return "not a git plugin"
+        cb("not a git plugin")
+        return
     end
-    vim.fn.system({ "git", "-C", reg.path, "checkout", "--quiet", branch })
-    local out = vim.fn.system({ "git", "-C", reg.path, "reset", "--hard", "--quiet", "origin/" .. branch })
-    if vim.v.shell_error ~= 0 then
-        return vim.trim(out)
-    end
-    outdated[name] = nil
-    return nil
+    -- The checkout result is ignored (as before — only the hard reset decides success/failure).
+    vim.system({ "git", "-C", reg.path, "checkout", "--quiet", branch }, {}, function()
+        vim.system({ "git", "-C", reg.path, "reset", "--hard", "--quiet", "origin/" .. branch }, {}, function(res)
+            vim.schedule(function()
+                if res.code ~= 0 then
+                    cb(vim.trim((res.stderr ~= "" and res.stderr) or res.stdout or "reset failed"))
+                else
+                    outdated[name] = nil
+                    cb(nil)
+                end
+            end)
+        end)
+    end)
 end
 
---- Check out `ref` (tag/branch/commit) in the plugin's dir. Synchronous; assumes the
---- ref is already fetched (call plugin_fetch first for newest).
+--- Check out `ref` (tag/branch/commit) in the plugin's dir. ASYNChronous (assumes the ref is already
+--- fetched — call plugin_fetch first for newest); `cb(err)` fires (scheduled) when done.
 ---@param name string
 ---@param ref string
----@return string|nil  error message on failure (nil on success)
-function L.plugin_checkout(name, ref)
+---@param cb fun(err: string|nil)
+---@return nil
+function L.plugin_checkout(name, ref, cb)
     local reg = registry[name]
     if not reg or reg.dir or not reg.path then
-        return "not a git plugin"
+        cb("not a git plugin")
+        return
     end
-    local out = vim.fn.system({ "git", "-C", reg.path, "checkout", "--quiet", ref })
-    if vim.v.shell_error ~= 0 then
-        return vim.trim(out)
-    end
-    outdated[name] = nil
-    return nil
+    vim.system({ "git", "-C", reg.path, "checkout", "--quiet", ref }, {}, function(res)
+        vim.schedule(function()
+            if res.code ~= 0 then
+                cb(vim.trim((res.stderr ~= "" and res.stderr) or res.stdout or "checkout failed"))
+            else
+                outdated[name] = nil
+                cb(nil)
+            end
+        end)
+    end)
 end
 
 return L

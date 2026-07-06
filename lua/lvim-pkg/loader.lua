@@ -41,28 +41,70 @@ local tags = {}
 local branches = {}
 ---@type table<string, string[]>  name → recent git log lines (cached on first request)
 local git_log = {}
----@type table<string, string>|nil  name → installed commit rev (from the pack lockfile)
-local lock_revs = nil
+---@type table<string, string|false>  name → live HEAD sha (false = unresolved), nil = not read
+local head_revs = {}
 
---- Read commit revisions from the vim.pack lockfile (cached, one file read).
----@return table<string, string>
-local function lockfile_revs()
-    if lock_revs then
-        return lock_revs
+--- Read and trim the first line of a file, or nil when unreadable.
+---@param file string
+---@return string|nil
+local function read_first_line(file)
+    local f = io.open(file, "r")
+    if not f then
+        return nil
     end
-    lock_revs = {}
-    local path = vim.fn.stdpath("config") .. "/nvim-pack-lock.json"
-    local ok, data = pcall(function()
-        return vim.json.decode(table.concat(vim.fn.readfile(path), "\n"))
-    end)
-    if ok and type(data) == "table" and type(data.plugins) == "table" then
-        for name, plug in pairs(data.plugins) do
-            if type(plug) == "table" and plug.rev then
-                lock_revs[name] = plug.rev
+    local line = f:read("*l")
+    f:close()
+    return line and vim.trim(line) or nil
+end
+
+--- Resolve a git checkout's current HEAD commit by reading the repo's plumbing files
+--- directly (no fork+exec): fast enough to call per plugin without freezing the UI, and
+--- always reflects the LIVE checkout — including raw-git checkouts that vim.pack's lockfile
+--- never records. Returns the full 40-char sha, or nil when it can't be resolved.
+---@param path string  plugin worktree root
+---@return string|nil
+function L.head_commit(path)
+    local gitdir = path .. "/.git"
+    local head = read_first_line(gitdir .. "/HEAD")
+    if not head then
+        return nil
+    end
+    local ref = head:match("^ref:%s*(%S+)")
+    if not ref then
+        return head:match("^(%x+)") -- detached HEAD: the line is the sha itself
+    end
+    -- Attached HEAD: read the loose ref, then fall back to packed-refs.
+    local loose = read_first_line(gitdir .. "/" .. ref)
+    if loose then
+        return loose:match("^(%x+)")
+    end
+    local pf = io.open(gitdir .. "/packed-refs", "r")
+    if pf then
+        for line in pf:lines() do
+            local sha, name = line:match("^(%x+)%s+(%S+)$")
+            if name == ref then
+                pf:close()
+                return sha
             end
         end
+        pf:close()
     end
-    return lock_revs
+    return nil
+end
+
+--- The plugin's live HEAD sha (cached; invalidated by a checkout/update or unregister).
+---@param name string
+---@return string|nil
+local function head_rev(name)
+    local cached = head_revs[name]
+    if cached ~= nil then
+        return cached or nil
+    end
+    local reg = registry[name]
+    local p = reg and (reg.path or reg.dir) or nil
+    local sha = p and L.head_commit(p) or nil
+    head_revs[name] = sha or false
+    return sha
 end
 
 --- Register the full plugin set (static spec info). Called once by the host loader.
@@ -83,6 +125,7 @@ function L.unregister(name)
     tags[name] = nil
     branches[name] = nil
     git_log[name] = nil
+    head_revs[name] = nil
 end
 
 --- Record that a plugin finished loading. Called by the host loader on each load.
@@ -149,7 +192,7 @@ function L.info(name)
         dir = reg.dir,
         version = reg.version,
         branch = reg.branch or (branches[name] or nil),
-        commit = (lockfile_revs()[name] or ""):sub(1, 7),
+        commit = (head_rev(name) or ""):sub(1, 7),
         tag = tags[name] or nil,
         lazy = reg.lazy == true,
         loaded = rec ~= nil,
@@ -215,15 +258,19 @@ function L.check_outdated(cb, on_progress)
         end
     end
 
-    outdated = {}
     local total = #targets
     if total == 0 then
+        outdated = {}
         if cb then
             cb({})
         end
         return
     end
 
+    -- Build into a LOCAL result set and publish it to the module `outdated` only at
+    -- completion, so an overlapping second run never wipes this run's partial state
+    -- mid-flight (each run keeps its own tally; the last to finish publishes cleanly).
+    local result = {}
     local found = {}
     local done = 0
     local next_i = 0
@@ -236,10 +283,13 @@ function L.check_outdated(cb, on_progress)
                 on_progress(done, total)
             end)
         end
-        if done == total and cb then
-            vim.schedule(function()
-                cb(found)
-            end)
+        if done == total then
+            outdated = result
+            if cb then
+                vim.schedule(function()
+                    cb(found)
+                end)
+            end
         end
     end
 
@@ -252,12 +302,16 @@ function L.check_outdated(cb, on_progress)
         -- until you explicitly update it.
         local sha_pinned = t.version and t.version:match("^%x+$") and #t.version >= 7
         local ref = (t.version and t.version ~= "" and not sha_pinned) and t.version or "HEAD"
-        vim.system({ "git", "-C", t.path, "ls-remote", "origin", ref }, { text = true }, function(r1)
-            local remote = (r1.stdout or ""):match("^(%x+)")
+        -- ls-remote BOTH `ref` and its peeled `ref^{}`: an annotated tag lists the tag
+        -- OBJECT sha first and the peeled COMMIT sha as `<ref>^{}` — HEAD is that commit,
+        -- so prefer the peeled line (else a tag-pinned plugin reads outdated forever).
+        vim.system({ "git", "-C", t.path, "ls-remote", "origin", ref, ref .. "^{}" }, { text = true }, function(r1)
+            local out = r1.stdout or ""
+            local remote = out:match("(%x+)%s+%S+%^{}") or out:match("^(%x+)")
             vim.system({ "git", "-C", t.path, "rev-parse", "HEAD" }, { text = true }, function(r2)
                 local local_sha = (r2.stdout or ""):gsub("%s+", "")
                 if remote and local_sha ~= "" and remote ~= local_sha then
-                    outdated[t.name] = true
+                    result[t.name] = true
                     found[#found + 1] = t.name
                 end
                 finish_one()
@@ -543,6 +597,7 @@ function L.plugin_update_branch(name, branch, cb)
                     cb(vim.trim((res.stderr ~= "" and res.stderr) or res.stdout or "reset failed"))
                 else
                     outdated[name] = nil
+                    head_revs[name] = nil -- HEAD moved; re-read the live sha on next info()
                     cb(nil)
                 end
             end)
@@ -568,6 +623,7 @@ function L.plugin_checkout(name, ref, cb)
                 cb(vim.trim((res.stderr ~= "" and res.stderr) or res.stdout or "checkout failed"))
             else
                 outdated[name] = nil
+                head_revs[name] = nil -- HEAD moved; re-read the live sha on next info()
                 cb(nil)
             end
         end)

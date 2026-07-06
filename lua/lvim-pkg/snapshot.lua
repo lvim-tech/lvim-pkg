@@ -77,13 +77,26 @@ local function path()
     return M.dir() .. "/" .. M.active()
 end
 
---- Read the active snapshot, normalized to { plugins = {…}, mason = {…} }.
+---@type { plugins: table, mason: table }|nil  decoded snapshot, cached by file identity
+local read_cache = nil
+---@type string|nil  the (path,mtime,size) key the cache was decoded from
+local read_key = nil
+
+--- Read the active snapshot, normalized to { plugins = {…}, mason = {…} }. The decode is
+--- cached by the file's (path, mtime, size); hot callers (snapshot_diff, install, pins) query
+--- per-name in loops, so re-opening + re-parsing the JSON each time was pure waste. An external
+--- edit changes the mtime and invalidates the cache automatically.
 ---@return { plugins: table, mason: table }
 local function read()
     local empty = { plugins = {}, mason = {} }
     local p = path()
     if not p then
         return empty
+    end
+    local st = vim.uv.fs_stat(p)
+    local key = st and (p .. ":" .. st.mtime.sec .. ":" .. st.mtime.nsec .. ":" .. st.size) or nil
+    if read_cache and read_key and key == read_key then
+        return read_cache
     end
     local f = io.open(p, "r")
     if not f then
@@ -101,6 +114,7 @@ local function read()
     end
     data.plugins = data.plugins or {}
     data.mason = data.mason or {}
+    read_cache, read_key = data, key
     return data
 end
 
@@ -153,6 +167,8 @@ local function write(data)
     end
     f:write(pretty(data))
     f:close()
+    -- The file changed under us; drop the read cache so the next read re-decodes fresh.
+    read_cache, read_key = nil, nil
     return true
 end
 

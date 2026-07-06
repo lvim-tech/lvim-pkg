@@ -12,8 +12,12 @@ local store = require("lvim-pkg.store")
 local snapshot = require("lvim-pkg.snapshot")
 local purl = require("lvim-pkg.registry.purl")
 local versions = require("lvim-pkg.install.versions")
+local util = require("lvim-pkg.install.util")
 
 local M = {}
+
+---@type table<string, boolean>  name → an install is currently in flight for it
+local in_flight = {}
 
 ---@type table<string, table>  source type → handler module
 local handlers = {
@@ -110,6 +114,20 @@ function M.install(name, opts, cb)
     end
     ---@cast p table -- guaranteed non-nil: `handler` is only set when `p` is a table
 
+    -- Serialize installs of the SAME package: the dir/.bak rename dance is not safe to run
+    -- twice concurrently for one name (two runs would clobber each other's backup). A second
+    -- concurrent request for the same package is rejected; distinct packages still parallelise.
+    if in_flight[name] then
+        cb("install already in progress: " .. name)
+        return
+    end
+    in_flight[name] = true
+    local outer_cb = cb
+    cb = function(err)
+        in_flight[name] = nil
+        outer_cb(err)
+    end
+
     -- Honour the active snapshot's recorded version (the full set, not just explicit
     -- pins), so a reproducibility record installs that exact version. Falls back to the
     -- registry default when the snapshot tracks latest (no entry).
@@ -123,12 +141,12 @@ function M.install(name, opts, cb)
     -- Keep the working install as a sibling backup while the new one builds, so a failed
     -- update restores the previous version instead of leaving the package uninstalled.
     local bak = dir .. ".bak"
-    vim.fn.delete(bak, "rf")
+    util.rm_rf_async(bak) -- drop any leftover backup (large trees removed off the main thread)
     local backed_up = false
     if vim.fn.isdirectory(dir) == 1 then
         backed_up = pcall(vim.uv.fs_rename, dir, bak) and vim.fn.isdirectory(bak) == 1
         if not backed_up then
-            vim.fn.delete(dir, "rf") -- couldn't back up; fall back to a clean reinstall
+            util.rm_rf_async(dir) -- couldn't back up; fall back to a clean reinstall
         end
     end
     vim.fn.mkdir(dir, "p")
@@ -152,14 +170,16 @@ function M.install(name, opts, cb)
 
     handler.install(ctx, function(err)
         if err then
-            vim.fn.delete(dir, "rf")
+            -- Rename the partial install aside (instant), restore the backup over the now-free
+            -- dir, and let the partial tree be removed in the background.
+            util.rm_rf_async(dir)
             if backed_up then
                 pcall(vim.uv.fs_rename, bak, dir) -- restore the previous working install
             end
             cb(err)
             return
         end
-        vim.fn.delete(bak, "rf") -- success: drop the backup
+        util.rm_rf_async(bak) -- success: drop the backup off the main thread
         store.receipt_set(name, { type = p.type, version = p.version, bins = bins })
         cb(nil)
     end)
@@ -176,7 +196,7 @@ function M.remove(name)
         end
     end
     store.receipt_remove(name)
-    vim.fn.delete(paths.package_dir(name), "rf")
+    util.rm_rf_async(paths.package_dir(name)) -- large trees removed off the main thread
 end
 
 --- Available versions of a Mason package (newest first), queried from its source's

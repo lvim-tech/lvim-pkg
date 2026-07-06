@@ -59,7 +59,13 @@ function M.extract(archive, dir, cb)
         M.run({ "tar", "-xf", archive, "-C", dir }, {}, cb)
     elseif lower:match("%.gz$") then
         local out = dir .. "/" .. vim.fn.fnamemodify(archive, ":t:r")
-        M.run({ "sh", "-c", string.format("gunzip -c %q > %q", archive, out) }, {}, cb)
+        -- POSIX-escape both paths: Lua's %q quotes for LUA, not sh, so a registry-supplied
+        -- filename containing $, backtick or \ could still expand / inject into `sh -c`.
+        M.run(
+            { "sh", "-c", string.format("gunzip -c %s > %s", vim.fn.shellescape(archive), vim.fn.shellescape(out)) },
+            {},
+            cb
+        )
     else
         cb("unknown archive type: " .. archive)
     end
@@ -83,6 +89,26 @@ end
 ---@return nil
 function M.chmod_x(path)
     pcall(vim.uv.fs_chmod, path, 493)
+end
+
+--- Remove a file/directory WITHOUT blocking the main thread on a large tree (a
+--- node_modules-sized package can hold thousands of files — deleting it synchronously froze
+--- the otherwise-async install pipeline for seconds). The path is renamed to a unique sibling
+--- (instant, same filesystem) so it disappears from its original location immediately, then the
+--- rename target is removed by a background `rm -rf`. Falls back to a synchronous delete when
+--- the rename fails (e.g. nothing there).
+---@param path string
+---@return nil
+function M.rm_rf_async(path)
+    if vim.fn.isdirectory(path) == 0 and vim.fn.filereadable(path) == 0 then
+        return
+    end
+    local trash = path .. ".trash-" .. tostring(vim.uv.hrtime())
+    if vim.uv.fs_rename(path, trash) then
+        M.run({ "rm", "-rf", trash }, {}, function() end)
+    else
+        vim.fn.delete(path, "rf")
+    end
 end
 
 return M

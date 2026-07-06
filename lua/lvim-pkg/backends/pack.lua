@@ -18,7 +18,10 @@ end
 function B.installed()
     local names = {}
     if has_pack() then
-        for _, plugin in ipairs(vim.pack.get()) do
+        -- info = false: we only need the names — the default (info = true) runs
+        -- git branch/tag (and, when online, fetch) subprocesses PER plugin, which is
+        -- ruinously slow when this is called in a membership loop.
+        for _, plugin in ipairs(vim.pack.get(nil, { info = false })) do
             local name = (plugin.spec and plugin.spec.name) or plugin.name
             if name then
                 names[#names + 1] = name
@@ -36,12 +39,13 @@ end
 ---@param name string
 ---@return boolean
 function B.is_installed(name)
-    for _, installed in ipairs(B.installed()) do
-        if installed == name then
-            return true
-        end
+    if not has_pack() then
+        return false
     end
-    return false
+    -- Targeted membership query (no full scan, no per-plugin git). vim.pack.get errors
+    -- when the name is unknown, so a failed pcall means "not installed".
+    local ok, res = pcall(vim.pack.get, { name }, { info = false })
+    return ok and type(res) == "table" and #res > 0
 end
 
 --- Add plugins. `specs` are vim.pack spec tables: { src = "owner/repo"|url, version?, name? }.

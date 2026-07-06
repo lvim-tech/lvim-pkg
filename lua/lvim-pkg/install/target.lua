@@ -38,19 +38,28 @@ local function detect()
     return osname, arch
 end
 
---- Detect the C library on Linux (gnu vs musl).
+---@type string|nil  memoized libc kind (cannot change within a session)
+local libc_cache = nil
+
+--- Detect the C library on Linux (gnu vs musl). Memoized — the first call spawns `ldd
+--- --version`; every later call (once per install target resolution) returns the cached value.
 ---@return string  "gnu" | "musl"
 local function libc()
+    if libc_cache then
+        return libc_cache
+    end
+    local kind = "gnu"
     if vim.fn.executable("ldd") == 1 then
         local out = vim.fn.system({ "ldd", "--version" })
         if type(out) == "string" and out:lower():find("musl") then
-            return "musl"
+            kind = "musl"
         end
     end
-    if vim.fn.glob("/lib/ld-musl*") ~= "" then
-        return "musl"
+    if kind == "gnu" and vim.fn.glob("/lib/ld-musl*") ~= "" then
+        kind = "musl"
     end
-    return "gnu"
+    libc_cache = kind
+    return kind
 end
 
 --- Current (os, arch).

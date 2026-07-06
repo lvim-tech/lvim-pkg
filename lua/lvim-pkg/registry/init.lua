@@ -85,6 +85,7 @@ function M.ensure(cb, force)
                 pcall(vim.uv.fs_copyfile, tmp .. "/registry.json", paths.registry_file())
                 M.load(true) -- reload from the fresh cache
             end
+            pcall(vim.fn.delete, tmp, "rf") -- discard the download/extract temp tree
             cb()
         end)
     end)

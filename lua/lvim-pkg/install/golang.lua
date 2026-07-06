@@ -20,7 +20,9 @@ function M.install(ctx, cb)
     end
     local module = mod .. "@" .. (ctx.purl.version or "latest")
     ctx.progress("go install")
-    local env = vim.tbl_extend("force", vim.fn.environ(), { GOBIN = ctx.dir, GO111MODULE = "on" })
+    -- vim.system MERGES `env` into the inherited parent environment (unless clear_env), so we
+    -- only need the two overrides — snapshotting the whole environ() was redundant.
+    local env = { GOBIN = ctx.dir, GO111MODULE = "on" }
     util.run({ "go", "install", module }, { env = env }, function(err)
         if err then
             cb("go: " .. err)

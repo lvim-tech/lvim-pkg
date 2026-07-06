@@ -22,6 +22,12 @@ local rtp_added = false
 local RECEIPT_PREFIX = "ts:"
 -- name → true, the parsers a check found behind the registry's current version.
 local outdated = {}
+-- lang → { waiters: fun(err)[] }, the parsers whose install is in flight right now. A parser
+-- pulled in as a shared `requires` dependency by two concurrent install chains must compile
+-- ONCE to its single .so path; a second requester subscribes to the first install's completion
+-- instead of racing a torn write to the same file.
+---@type table<string, { waiters: fun(err: string|nil)[] }>
+local in_flight = {}
 
 ---@return string  parser .so output directory
 local function parser_dir()
@@ -100,11 +106,21 @@ local function resolve_latest(lang, cb)
     end
 end
 
---- Record `lang`'s installed version (resolved the same way the outdated check resolves
---- the latest), so the two are comparable. Clears any stale outdated flag. `cb()` always.
+--- Record `lang`'s installed version, so it is comparable to what the outdated check
+--- resolves as latest. When the caller already knows the built revision (the queries repo's
+--- pinned `parser_version`), record THAT — it is exactly the value resolve_latest would refetch,
+--- minus a redundant network round-trip AND minus the race where the recorded version is remote
+--- HEAD taken *after* the compile. Falls back to resolve_latest only when the version is unknown
+--- (e.g. a self-contained, main-tracked parser). Clears any stale outdated flag. `cb()` always.
 ---@param lang string
+---@param known string|nil  the revision actually built, when the installer knows it
 ---@param cb fun()
-local function record_installed(lang, cb)
+local function record_installed(lang, known, cb)
+    if known and known ~= "" then
+        store.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = known })
+        outdated[lang] = nil
+        return cb()
+    end
     resolve_latest(lang, function(version)
         if version then
             store.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = version })
@@ -224,8 +240,19 @@ local function copy_queries(qroot, lang, subdir)
     end
 end
 
+--- Remove the temp extraction tree a fetch_repo dir lives in (its parent), once its files
+--- have been copied/compiled out — so a long session of parser installs does not accumulate
+--- tarball extractions under the private tmp dir.
+---@param dir string|nil  a directory returned by fetch_repo (repo root under a tmp dir)
+local function discard_extract(dir)
+    if dir then
+        pcall(vim.fn.delete, vim.fn.fnamemodify(dir, ":h"), "rf")
+    end
+end
+
 --- Install one language: its `requires` dependencies first, then its parser (.so)
---- and queries (.scm). `seen` guards against dependency cycles / repeats.
+--- and queries (.scm). `seen` guards against dependency cycles / repeats within ONE chain;
+--- the module-level `in_flight` guard coalesces the SAME parser requested by concurrent chains.
 ---@param lang string
 ---@param cb fun(err: string|nil)
 ---@param seen? table<string, boolean>
@@ -235,9 +262,28 @@ local function install_one(lang, cb, seen)
         return cb(nil)
     end
     seen[lang] = true
+    -- Another concurrent chain is already installing this exact parser: wait for its single
+    -- compile rather than racing a second one onto the same .so path.
+    local fl = in_flight[lang]
+    if fl then
+        fl.waiters[#fl.waiters + 1] = cb
+        return
+    end
+    in_flight[lang] = { waiters = {} }
+    -- Central completion: publish the result to this parser's waiters and release the guard,
+    -- so every path below finishes through `finish` instead of a bare `cb`.
+    local function finish(err)
+        local waiters = in_flight[lang] and in_flight[lang].waiters or {}
+        in_flight[lang] = nil
+        cb(err)
+        for _, w in ipairs(waiters) do
+            w(err)
+        end
+    end
+
     local entry = registry.get(lang)
     if not entry then
-        return cb("unknown parser: " .. lang)
+        return finish("unknown parser: " .. lang)
     end
     local src = entry.source
 
@@ -247,11 +293,12 @@ local function install_one(lang, cb, seen)
         if src.type == "queries_only" then
             return fetch_repo(src.url, "main", function(err, qdir)
                 if err then
-                    return cb(err)
+                    return finish(err)
                 end
                 ---@cast qdir string  fetch_repo guarantees a dir when err is nil
                 copy_queries(qdir, lang)
-                cb(nil)
+                discard_extract(qdir)
+                finish(nil)
             end)
         end
         -- external_queries / self_contained: queries repo (for the pinned version) → parser → compile.
@@ -261,20 +308,27 @@ local function install_one(lang, cb, seen)
             local ref = pj.parser_version or "main"
             fetch_repo(purl, ref, function(e2, pdir)
                 if e2 then
-                    return cb(e2)
+                    discard_extract(qdir)
+                    return finish(e2)
                 end
                 ---@cast pdir string  fetch_repo guarantees a dir when err is nil
                 local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
                 compile(grammar, parser_dir() .. "/" .. lang .. ".so", function(e3)
                     if e3 then
-                        return cb("compile " .. lang .. ": " .. e3)
+                        discard_extract(qdir)
+                        discard_extract(pdir)
+                        return finish("compile " .. lang .. ": " .. e3)
                     end
                     -- external_queries: `qdir` is the queries repo. self_contained: no queries repo (qdir nil),
                     -- so queries live in the parser repo — under `source.queries_dir` when the entry names one.
                     local sub = (not qdir) and src.queries_dir or nil
                     copy_queries(qdir or grammar, lang, sub)
-                    record_installed(lang, function()
-                        cb(nil)
+                    discard_extract(qdir)
+                    discard_extract(pdir)
+                    -- pj.parser_version is exactly the built revision (external_queries); nil for a
+                    -- self-contained parser, where record_installed falls back to resolve_latest.
+                    record_installed(lang, pj.parser_version, function()
+                        finish(nil)
                     end)
                 end)
             end)
@@ -282,7 +336,7 @@ local function install_one(lang, cb, seen)
         if src.queries_url then
             fetch_repo(src.queries_url, "main", function(err, qdir)
                 if err then
-                    return cb(err)
+                    return finish(err)
                 end
                 with_queries(qdir)
             end)
@@ -301,7 +355,7 @@ local function install_one(lang, cb, seen)
         end
         install_one(reqs[i], function(err)
             if err then
-                return cb(err)
+                return finish(err)
             end
             next_dep()
         end, seen)
@@ -476,6 +530,9 @@ function B.check_outdated(cb, on_progress)
             end
             return
         end
+        -- Build into a LOCAL result set, published to the module `outdated` only at completion,
+        -- so an overlapping second run cannot corrupt this run's partial state mid-flight.
+        local result = {}
         local done, next_i = 0, 0
         local limit = 8
         local start_next
@@ -486,10 +543,13 @@ function B.check_outdated(cb, on_progress)
                     on_progress(done, total)
                 end)
             end
-            if done == total and cb then
-                vim.schedule(function()
-                    cb(found)
-                end)
+            if done == total then
+                outdated = result
+                if cb then
+                    vim.schedule(function()
+                        cb(found)
+                    end)
+                end
             end
         end
         local function check(lang)
@@ -502,12 +562,9 @@ function B.check_outdated(cb, on_progress)
                     if latest then
                         store.receipt_set(RECEIPT_PREFIX .. lang, { type = "parser", version = latest })
                     end
-                    outdated[lang] = nil
                 elseif latest and cur ~= latest then
-                    outdated[lang] = true
+                    result[lang] = true
                     found[#found + 1] = lang
-                else
-                    outdated[lang] = nil
                 end
                 finish_one()
                 start_next()

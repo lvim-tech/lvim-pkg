@@ -279,8 +279,12 @@ function M.remove(kind, names, cb)
         M.emit("removing", kind, name)
     end
     b.remove(names, function(err)
-        for _, name in ipairs(names) do
-            M.emit("removed", kind, name)
+        -- Only announce "removed" when the delete actually succeeded — on failure the files
+        -- are still on disk, so post-delete cleanup subscribers must NOT run.
+        if not err then
+            for _, name in ipairs(names) do
+                M.emit("removed", kind, name)
+            end
         end
         if cb then
             cb(err)
@@ -496,13 +500,10 @@ function M.snapshot_save(name)
     local active = pins.all_full()
     local data = { plugins = {}, mason = {} }
     for _, info in ipairs(M.plugins()) do
-        local commit
-        if info.path then
-            local head = vim.trim(vim.fn.system({ "git", "-C", info.path, "rev-parse", "HEAD" }))
-            if vim.v.shell_error == 0 and head ~= "" then
-                commit = head
-            end
-        end
+        -- Resolve each plugin's HEAD by reading its .git plumbing (loader.head_commit) rather
+        -- than forking `git rev-parse` per plugin — with 100+ plugins the sequential fork+exec
+        -- froze the UI for up to a couple of seconds on every snapshot save.
+        local commit = info.path and loader.head_commit(info.path) or nil
         commit = commit or (info.commit ~= "" and info.commit or nil)
         if commit then
             local entry = { commit = commit }
@@ -538,10 +539,26 @@ end
 function M.snapshot_diff()
     local out = { plugins = {}, mason = {} }
     for _, info in ipairs(M.plugins()) do
-        local to = snapshot.get("plugin", info.name)
-        local cur = info.commit
-        if to and to ~= "" and cur and cur ~= "" and not vim.startswith(to, cur) and not vim.startswith(cur, to) then
-            out.plugins[#out.plugins + 1] = { name = info.name, from = cur, to = to }
+        local rec = snapshot.get_full("plugin", info.name)
+        if rec and rec.version and rec.version ~= "" then
+            local changed
+            if rec.reftype == "commit" then
+                -- Commit pin: prefix-compare the sha against the live short HEAD.
+                local cur = info.commit
+                changed = cur
+                    and cur ~= ""
+                    and not vim.startswith(rec.version, cur)
+                    and not vim.startswith(cur, rec.version)
+            else
+                -- Tag/branch pin: a ref NAME never prefix-matches a sha, so compare against the
+                -- live checkout's ref (kind/value) instead — a plugin sitting exactly on its
+                -- pinned tag/branch is NOT a pending change.
+                local curp = loader.plugin_current(info.name)
+                changed = not (curp and curp.value == rec.version)
+            end
+            if changed then
+                out.plugins[#out.plugins + 1] = { name = info.name, from = info.commit, to = rec.version }
+            end
         end
     end
     local ok, install = pcall(require, "lvim-pkg.install")
@@ -561,12 +578,15 @@ end
 --- running Lua keeps the old code until a restart) and reinstall each changed Mason
 --- package at its pinned version. `on_progress(kind, name, action)` is optional.
 ---@param diff { plugins: table[], mason: table[] }
----@param cb? fun()
+---@param cb? fun(errs: string[]|nil)
 ---@param on_progress? fun(kind: string, name: string, action: string)
 ---@return nil
 function M.snapshot_restore(diff, cb, on_progress)
     cb = cb or function() end
     local plugins = diff.plugins or {}
+    -- Per-plugin checkout failures collected here so the caller can surface them rather than
+    -- silently reporting a clean restore; nil is passed when everything succeeded.
+    local errs = {}
 
     -- After every plugin checkout: reinstall the changed Mason packages, then finish.
     local function do_mason()
@@ -575,10 +595,10 @@ function M.snapshot_restore(diff, cb, on_progress)
             names[#names + 1] = m.name
         end
         if #names == 0 then
-            return cb()
+            return cb(#errs > 0 and errs or nil)
         end
         M.install("mason", names, function()
-            cb()
+            cb(#errs > 0 and errs or nil)
         end, {
             on_progress = on_progress and function(name, _, action)
                 on_progress("mason", name, action)
@@ -598,7 +618,10 @@ function M.snapshot_restore(diff, cb, on_progress)
         if on_progress then
             on_progress("plugin", p.name, "checkout")
         end
-        M.plugin_checkout(p.name, p.to, function()
+        M.plugin_checkout(p.name, p.to, function(err)
+            if err then
+                errs[#errs + 1] = p.name .. ": " .. err
+            end
             next_plugin()
         end)
     end

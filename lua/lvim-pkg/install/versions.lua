@@ -91,6 +91,8 @@ local QUERY = {
         end)
     end,
     github = function(p, cb)
+        -- Deliberately a single page: the newest 100 tags is far more than a version picker
+        -- needs, and paginating the whole tag history would be a slow multi-request walk.
         fetch("https://api.github.com/repos/" .. p.name .. "/tags?per_page=100", function(path)
             local d = path and read_json(path)
             if type(d) ~= "table" then

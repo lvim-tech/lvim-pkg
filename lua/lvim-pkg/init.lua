@@ -661,23 +661,32 @@ end
 function M.update_registry(which, cb, force)
     which = which or "all"
     cb = cb or function() end
-    local pending = 0
+    local jobs = {}
+    if which == "mason" or which == "all" then
+        jobs[#jobs + 1] = function(done)
+            registry.ensure(done, force)
+        end
+    end
+    if which == "ts" or which == "all" then
+        jobs[#jobs + 1] = function(done)
+            registry_ts.ensure(done, force)
+        end
+    end
+    if #jobs == 0 then
+        cb()
+        return
+    end
+    local pending = #jobs
+    local fired = false
     local function done()
         pending = pending - 1
-        if pending <= 0 then
+        if pending <= 0 and not fired then
+            fired = true
             cb()
         end
     end
-    if which == "mason" or which == "all" then
-        pending = pending + 1
-        registry.ensure(done, force)
-    end
-    if which == "ts" or which == "all" then
-        pending = pending + 1
-        registry_ts.ensure(done, force)
-    end
-    if pending == 0 then
-        cb()
+    for _, job in ipairs(jobs) do
+        job(done)
     end
 end
 

@@ -81,12 +81,31 @@ end
 function M.ensure(cb, force)
     cb = cb or function() end
     if not force and fresh() then
-        load_file() -- populate the in-memory cache from the fresh on-disk copy
+        if not cache then
+            load_file() -- populate the in-memory cache from the fresh on-disk copy
+        end
         return cb()
     end
     paths.ensure()
-    util.download(URL, paths.ts_registry_file(), function()
-        load_file() -- loads the fresh download, or the existing copy if the download failed
+    local tmp = vim.fn.tempname()
+    util.download(URL, tmp, function(err)
+        if not err then
+            local f = io.open(tmp, "r")
+            local content = f and f:read("*a") or nil
+            if f then
+                f:close()
+            end
+            local ok, data = false, nil
+            if content then
+                ok, data = pcall(vim.json.decode, content)
+            end
+            if ok and type(data) == "table" then
+                pcall(vim.uv.fs_rename, tmp, paths.ts_registry_file())
+                cache, ft_index = nil, nil
+            end
+        end
+        pcall(vim.fn.delete, tmp)
+        load_file() -- loads the fresh validated download, or keeps the existing copy on error
         cb()
     end)
 end

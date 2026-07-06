@@ -121,7 +121,10 @@ local QUERY = {
         end)
     end,
     golang = function(p, cb)
-        fetch("https://proxy.golang.org/" .. p.name:lower() .. "/@v/list", function(path)
+        local escaped = p.name:gsub("%u", function(c)
+            return "!" .. c:lower()
+        end)
+        fetch("https://proxy.golang.org/" .. escaped .. "/@v/list", function(path)
             local f = path and io.open(path, "r")
             if not f then
                 return cb(nil)

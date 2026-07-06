@@ -101,7 +101,7 @@ function M.resolve(modules)
     local seen = {}
 
     local function visit(repo, spec)
-        if seen[repo] then
+        if seen[repo] or type(spec) ~= "table" then
             return
         end
         seen[repo] = true

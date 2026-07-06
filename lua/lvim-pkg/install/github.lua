@@ -16,9 +16,11 @@ local M = {}
 local function is_archive(file)
     local lower = file:lower()
     return lower:match("%.zip$") ~= nil
-        or lower:match("%.tar%.?g?z?$") ~= nil
+        or lower:match("%.tar%.gz$") ~= nil
+        or lower:match("%.tar%.xz$") ~= nil
         or lower:match("%.tgz$") ~= nil
         or lower:match("%.txz$") ~= nil
+        or lower:match("%.tar$") ~= nil
         or lower:match("%.gz$") ~= nil
 end
 
@@ -92,7 +94,9 @@ function M.install(ctx, cb)
                 local launcher = ctx.bin_dir .. "/" .. binname
                 local fh = io.open(launcher, "w")
                 if fh then
-                    fh:write(('#!/bin/sh\nexec %s %q "$@"\n'):format(runner, src))
+                    fh:write(
+                        ('#!/bin/sh\nexec %s %s "$@"\n'):format(vim.fn.shellescape(runner), vim.fn.shellescape(src))
+                    )
                     fh:close()
                     util.chmod_x(launcher)
                     ctx.add_bin(binname)

@@ -71,7 +71,11 @@ end
 ---@return boolean  Success
 function M.symlink(src, link_path)
     vim.fn.delete(link_path)
-    return (pcall(vim.uv.fs_symlink, src, link_path))
+    if not vim.uv.fs_stat(src) then
+        return false
+    end
+    local ok, err = vim.uv.fs_symlink(src, link_path)
+    return ok == true and err == nil
 end
 
 --- Mark a file executable (0755).  Best-effort.

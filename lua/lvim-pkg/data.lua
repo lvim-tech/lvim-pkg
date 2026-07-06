@@ -28,11 +28,13 @@ function M.missing_for_ft(ft)
         local ok, items = pcall(provider, ft)
         if ok and type(items) == "table" then
             for _, item in ipairs(items) do
-                local key = item.kind .. "\0" .. item.name
-                if not seen[key] and not declined[item.name] and not pkg.is_installed(item.kind, item.name) then
-                    seen[key] = true
-                    item.label = item.label or item.name
-                    out[#out + 1] = item
+                if type(item) == "table" and item.kind and item.name then
+                    local key = item.kind .. "\0" .. item.name
+                    if not seen[key] and not declined[item.name] and not pkg.is_installed(item.kind, item.name) then
+                        seen[key] = true
+                        item.label = item.label or item.name
+                        out[#out + 1] = item
+                    end
                 end
             end
         end

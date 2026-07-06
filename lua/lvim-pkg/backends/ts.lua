@@ -88,9 +88,13 @@ local function resolve_latest(lang, cb)
             cb(pj and pj.parser_version or nil)
         end)
     elseif src.parser_url then
-        vim.system({ "git", "ls-remote", src.parser_url, "HEAD" }, { text = true }, function(r)
-            cb((r.stdout or ""):match("^(%x+)"))
-        end)
+        vim.system(
+            { "git", "ls-remote", src.parser_url, "HEAD" },
+            { text = true },
+            vim.schedule_wrap(function(r)
+                cb((r.stdout or ""):match("^(%x+)"))
+            end)
+        )
     else
         cb(nil)
     end
@@ -116,6 +120,10 @@ end
 ---@param ref string   tag, branch or commit
 ---@param cb  fun(err: string|nil, dir: string|nil)
 local function fetch_repo(url, ref, cb)
+    if not url or url == "" then
+        cb("missing repository url")
+        return
+    end
     local owner_repo = url:gsub("https://github.com/", ""):gsub("%.git$", "")
     local tarball = string.format("https://github.com/%s/archive/%s.tar.gz", owner_repo, ref)
     local tmp = vim.fn.tempname()

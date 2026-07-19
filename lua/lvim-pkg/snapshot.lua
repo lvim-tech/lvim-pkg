@@ -336,6 +336,12 @@ function M.import(src, name)
         return false, "not valid JSON: " .. tostring(src)
     end
     name = (name and name ~= "") and name or vim.fn.fnamemodify(src, ":t:r")
+    -- A flat lazy-lock-style file (`{ "<name>": {commit} }`) has no plugins/mason sections; write_file would
+    -- stamp empty sections next to the flat keys and read() would then return empty. Normalize to the
+    -- plugins-only shape first (mirrors read()'s back-compat wrap).
+    if data.plugins == nil and data.mason == nil then
+        data = { plugins = data, mason = {} }
+    end
     if not M.write_file(name, data) then
         return false, "could not write snapshot: " .. tostring(name)
     end

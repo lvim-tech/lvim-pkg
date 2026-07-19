@@ -55,6 +55,7 @@ function M.install(ctx, cb)
         file = file_spec
     end
     file = subst(file)
+    subdir = subdir and subst(subdir) -- a subdir may embed {{version}} too, else extract misses the dir
 
     local url = string.format("https://github.com/%s/releases/download/%s/%s", owner_repo, tag, file)
     local download_path = ctx.dir .. "/" .. file

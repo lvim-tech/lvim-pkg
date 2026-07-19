@@ -100,7 +100,9 @@ function M.ensure(cb, force)
                 ok, data = pcall(vim.json.decode, content)
             end
             if ok and type(data) == "table" then
-                pcall(vim.uv.fs_rename, tmp, paths.ts_registry_file())
+                -- COPY (not rename): tempname() is on tmpfs and the data dir is often a different filesystem,
+                -- so fs_rename fails EXDEV and the catalogue never updates. The tmp is deleted just below.
+                pcall(vim.uv.fs_copyfile, tmp, paths.ts_registry_file())
                 cache, ft_index = nil, nil
             end
         end

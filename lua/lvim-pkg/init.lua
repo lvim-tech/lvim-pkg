@@ -498,7 +498,7 @@ function M.snapshot_save(name)
         return false, "snapshot name required"
     end
     local active = pins.all_full()
-    local data = { plugins = {}, mason = {} }
+    local snap = { plugins = {}, mason = {} }
     for _, info in ipairs(M.plugins()) do
         -- Resolve each plugin's HEAD by reading its .git plumbing (loader.head_commit) rather
         -- than forking `git rev-parse` per plugin — with 100+ plugins the sequential fork+exec
@@ -510,7 +510,7 @@ function M.snapshot_save(name)
             if active.plugin[info.name] then
                 entry.pin = true
             end
-            data.plugins[info.name] = entry
+            snap.plugins[info.name] = entry
         end
     end
     local ok, install = pcall(require, "lvim-pkg.install")
@@ -522,11 +522,11 @@ function M.snapshot_save(name)
                 if active.mason[mname] then
                     entry.pin = true
                 end
-                data.mason[mname] = entry
+                snap.mason[mname] = entry
             end
         end
     end
-    if not snapshot.write_file(name, data) then
+    if not snapshot.write_file(name, snap) then
         return false, "could not write snapshot file"
     end
     return true

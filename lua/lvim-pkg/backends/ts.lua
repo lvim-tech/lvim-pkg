@@ -427,7 +427,9 @@ function B.install_queries(name, cb)
                 end
                 ---@cast pdir string  fetch_repo guarantees a dir when err is nil
                 local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
-                copy_queries(grammar, name)
+                -- honour a self_contained entry's `source.queries_dir` here too (the full-install path already
+                -- does) — else a queries-only migration copies the grammar's own .scm, not the Neovim set.
+                copy_queries(grammar, name, src.queries_dir)
                 cb(nil)
             end)
         end

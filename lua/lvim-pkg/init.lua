@@ -245,6 +245,23 @@ function M.install(kind, items, cb, opts)
     b.install(items, cb, opts)
 end
 
+--- Install a language SDK that is not a mason-registry package (a git-cloned SDK such as
+--- Flutter), through the dedicated `sdk` handler. See lvim-pkg.install.install_sdk.
+---@param spec { name: string, repo: string, ref?: string, bins?: string[], version?: string }
+---@param cb?   fun(err: string|nil)
+---@param opts? { on_progress?: fun(name: string, status: string, action: string) }
+---@return nil
+function M.install_sdk(spec, cb, opts)
+    local ok, install = pcall(require, "lvim-pkg.install")
+    if not ok then
+        if cb then
+            cb("lvim-pkg.install unavailable")
+        end
+        return
+    end
+    install.install_sdk(spec, opts, cb or function() end)
+end
+
 ---@param kind  string
 ---@param names? string[]
 ---@param cb?   function

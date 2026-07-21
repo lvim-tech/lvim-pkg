@@ -26,6 +26,7 @@ local handlers = {
     golang = require("lvim-pkg.install.golang"),
     cargo = require("lvim-pkg.install.cargo"),
     github = require("lvim-pkg.install.github"),
+    sdk = require("lvim-pkg.install.sdk"),
 }
 
 --- Is the source type installable by this engine?
@@ -181,6 +182,78 @@ function M.install(name, opts, cb)
         end
         util.rm_rf_async(bak) -- success: drop the backup off the main thread
         store.receipt_set(name, { type = p.type, version = p.version, bins = bins })
+        cb(nil)
+    end)
+end
+
+--- Install a language SDK that is NOT a mason-registry package (a git-cloned SDK such as
+--- Flutter), through the `sdk` handler. `spec` carries the source directly:
+---   { name = "flutter", repo = "https://github.com/flutter/flutter.git", ref = "stable",
+---     bins = { "flutter", "dart" }, version? = "stable" }
+--- Mirrors install()'s dir/backup/receipt dance so a failed clone restores the previous SDK.
+---@param spec { name: string, repo: string, ref?: string, bins?: string[], version?: string }
+---@param opts { on_progress?: fun(name: string, status: string, action: string) }|nil
+---@param cb   fun(err: string|nil)
+---@return nil
+function M.install_sdk(spec, opts, cb)
+    opts = opts or {}
+    local name = spec.name
+    if not name or not spec.repo then
+        cb("install_sdk: spec needs `name` and `repo`")
+        return
+    end
+    if in_flight[name] then
+        cb("install already in progress: " .. name)
+        return
+    end
+    in_flight[name] = true
+    local outer_cb = cb
+    cb = function(err)
+        in_flight[name] = nil
+        outer_cb(err)
+    end
+
+    paths.ensure()
+    local dir = paths.package_dir(name)
+    local bak = dir .. ".bak"
+    util.rm_rf_async(bak)
+    local backed_up = false
+    if vim.fn.isdirectory(dir) == 1 then
+        backed_up = pcall(vim.uv.fs_rename, dir, bak) and vim.fn.isdirectory(bak) == 1
+        if not backed_up then
+            util.rm_rf_async(dir)
+        end
+    end
+    -- The sdk handler `git clone`s INTO dir, which must not pre-exist (git refuses a non-empty
+    -- target); unlike the registry path we therefore do NOT pre-create it.
+
+    local bins = {}
+    local ctx = {
+        name = name,
+        dir = dir,
+        bin_dir = paths.bin(),
+        purl = { repo = spec.repo, ref = spec.ref, bins = spec.bins },
+        add_bin = function(binname)
+            bins[#bins + 1] = binname
+        end,
+        progress = function(action)
+            if opts.on_progress then
+                opts.on_progress(name, "pending", action)
+            end
+        end,
+    }
+
+    handlers.sdk.install(ctx, function(err)
+        if err then
+            util.rm_rf_async(dir)
+            if backed_up then
+                pcall(vim.uv.fs_rename, bak, dir)
+            end
+            cb(err)
+            return
+        end
+        util.rm_rf_async(bak)
+        store.receipt_set(name, { type = "sdk", version = spec.version or spec.ref, bins = bins })
         cb(nil)
     end)
 end

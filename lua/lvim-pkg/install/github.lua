@@ -79,30 +79,7 @@ function M.install(ctx, cb)
             local val = tostring(tmpl)
             val = val:gsub("{{%s*source%.bin%s*}}", source.bin or "")
             val = val:gsub("{{%s*source%.asset%.bin%s*}}", asset.bin or "")
-            val = subst(val)
-
-            local runner, path = val:match("^(%a[%w_]*):(.+)$")
-            path = path or val
-            local src = ctx.dir .. "/" .. path
-
-            if runner == nil or runner == "exec" then
-                util.chmod_x(src)
-                if util.symlink(src, ctx.bin_dir .. "/" .. binname) then
-                    ctx.add_bin(binname)
-                end
-            else
-                -- Interpreter launcher: `exec <runner> <script> "$@"`.
-                local launcher = ctx.bin_dir .. "/" .. binname
-                local fh = io.open(launcher, "w")
-                if fh then
-                    fh:write(
-                        ('#!/bin/sh\nexec %s %s "$@"\n'):format(vim.fn.shellescape(runner), vim.fn.shellescape(src))
-                    )
-                    fh:close()
-                    util.chmod_x(launcher)
-                    ctx.add_bin(binname)
-                end
-            end
+            util.link_bin(ctx, binname, subst(val)) -- shared exec / interpreter-launcher linking
         end
         cb(nil)
     end

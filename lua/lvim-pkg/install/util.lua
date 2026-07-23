@@ -91,6 +91,37 @@ function M.chmod_x(path)
     pcall(vim.uv.fs_chmod, path, 493)
 end
 
+--- Link a RESOLVED bin `val` (a path RELATIVE to `ctx.dir`, optionally prefixed with "<runner>:") into
+--- `ctx.bin_dir` as `binname`, and record it via `ctx.add_bin`. Mason bin templates carry an optional
+--- interpreter prefix: no prefix / "exec:" → a plain executable (chmod + symlink); "python:" / "node:"
+--- / … → a script run through that interpreter, so we write a tiny `exec <runner> <script> "$@"`
+--- launcher. Shared by every download-and-link source (github / generic / …), so the wrapper semantics
+--- are identical across sources. `val` must already have its template tokens substituted by the caller.
+---@param ctx table    the install context ({ dir, bin_dir, add_bin, … })
+---@param binname string
+---@param val string   e.g. "stylua" or "python:bin/jdtls"
+---@return nil
+function M.link_bin(ctx, binname, val)
+    local runner, path = val:match("^(%a[%w_]*):(.+)$")
+    path = path or val
+    local src = ctx.dir .. "/" .. path
+    if runner == nil or runner == "exec" then
+        M.chmod_x(src)
+        if M.symlink(src, ctx.bin_dir .. "/" .. binname) then
+            ctx.add_bin(binname)
+        end
+    else
+        local launcher = ctx.bin_dir .. "/" .. binname
+        local fh = io.open(launcher, "w")
+        if fh then
+            fh:write(('#!/bin/sh\nexec %s %s "$@"\n'):format(vim.fn.shellescape(runner), vim.fn.shellescape(src)))
+            fh:close()
+            M.chmod_x(launcher)
+            ctx.add_bin(binname)
+        end
+    end
+end
+
 --- Remove a file/directory WITHOUT blocking the main thread on a large tree (a
 --- node_modules-sized package can hold thousands of files — deleting it synchronously froze
 --- the otherwise-async install pipeline for seconds). The path is renamed to a unique sibling

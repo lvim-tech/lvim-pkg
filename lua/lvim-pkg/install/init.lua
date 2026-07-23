@@ -27,6 +27,8 @@ local handlers = {
     cargo = require("lvim-pkg.install.cargo"),
     github = require("lvim-pkg.install.github"),
     sdk = require("lvim-pkg.install.sdk"),
+    generic = require("lvim-pkg.install.generic"), -- direct downloads (jdtls, …)
+    openvsx = require("lvim-pkg.install.openvsx"), -- Open VSX extensions (java-debug-adapter, java-test, …)
 }
 
 --- Is the source type installable by this engine?

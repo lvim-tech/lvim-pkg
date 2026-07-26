@@ -52,13 +52,25 @@ local function sorted(list)
     return list
 end
 
---- Download `url` to a temp file; cb(path|nil).
+--- Download `url` to a temp file, hand the path to `cb`, then DELETE it.
+---
+--- Every query handler reads the file synchronously inside `cb` (json decode, or a line read that
+--- closes its own handle), so the file is finished with by the time `cb` returns and deleting it here
+--- keeps the temp dir from filling up over a long session of version-picker use. A FAILED download can
+--- still have left a partial file, so that path is cleaned too. Neovim would clear these at exit
+--- anyway — this is about the session, not the exit.
 ---@param url string
 ---@param cb fun(path: string|nil)
 local function fetch(url, cb)
     local tmp = vim.fn.tempname()
     util.download(url, tmp, function(err)
-        cb(err and nil or tmp)
+        if err then
+            pcall(vim.fn.delete, tmp)
+            cb(nil)
+            return
+        end
+        cb(tmp)
+        pcall(vim.fn.delete, tmp)
     end)
 end
 

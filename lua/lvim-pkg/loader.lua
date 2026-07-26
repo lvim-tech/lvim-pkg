@@ -65,6 +65,20 @@ end
 ---@return string|nil
 function L.head_commit(path)
     local gitdir = path .. "/.git"
+    -- A WORKTREE or SUBMODULE checkout has `.git` as a FILE holding `gitdir: <real path>`, not a
+    -- directory. Reading `<path>/.git/HEAD` then fails and the plugin's commit silently reads as nil
+    -- (an empty column in the browser, an empty entry in a saved snapshot). vim.pack's own clones are
+    -- ordinary repos, so this only bites a `dir=` dev setup — which is exactly where it is used.
+    if (vim.uv.fs_stat(gitdir) or {}).type == "file" then
+        local pointer = read_first_line(gitdir)
+        local real = pointer and pointer:match("^gitdir:%s*(.+)%s*$")
+        if not real then
+            return nil
+        end
+        -- The recorded path may be relative to the checkout.
+        gitdir = real:sub(1, 1) == "/" and real or (path .. "/" .. real)
+        gitdir = vim.fs.normalize(gitdir)
+    end
     local head = read_first_line(gitdir .. "/HEAD")
     if not head then
         return nil

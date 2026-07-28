@@ -65,8 +65,12 @@ function M.install(ctx, cb)
         -- Each template resolves to a path with an optional "<runner>:" prefix:
         --   no prefix / "exec:"      → a plain executable (chmod + symlink)
         --   "node:" / "python:" / …  → a script launched through an interpreter (wrapper)
-        -- Templates: {{source.asset.bin}} (the chosen asset's bin, e.g. stylua) and
-        -- {{source.bin}} (a source-level bin, e.g. node-based adapters).
+        -- Templates: {{source.asset.bin}} (the chosen asset's bin, e.g. stylua),
+        -- {{source.bin}} (a source-level bin, e.g. node-based adapters) and
+        -- {{source.asset.file}} — THE DOWNLOADED FILE ITSELF, which is what a package whose asset
+        -- IS the executable uses (40 registry entries do: marksman, hadolint, jq, buf, helm-ls …).
+        -- Left unsubstituted it stayed in the path as a literal, so the link pointed at nothing and
+        -- the tool reported itself "not found" while sitting unpacked in its package directory.
         local bins = ctx.spec.bin or {}
 
         -- Fallback: no top-level map but the asset names a bin — link it under its basename.
@@ -79,6 +83,7 @@ function M.install(ctx, cb)
             local val = tostring(tmpl)
             val = val:gsub("{{%s*source%.bin%s*}}", source.bin or "")
             val = val:gsub("{{%s*source%.asset%.bin%s*}}", asset.bin or "")
+            val = val:gsub("{{%s*source%.asset%.file%s*}}", file or "")
             util.link_bin(ctx, binname, subst(val)) -- shared exec / interpreter-launcher linking
         end
         cb(nil)

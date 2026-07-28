@@ -101,8 +101,20 @@ end
 ---@param binname string
 ---@param val string   e.g. "stylua" or "python:bin/jdtls"
 ---@return nil
+--- A runner prefix that is not a bare command name: what to actually exec, in argv order. The
+--- registry writes `java-jar:` for a runnable jar, which is `java -jar <path>` — spelled as one
+--- token it looked like a command called "java-jar" and the launcher it produced could never run.
+---@type table<string, string[]>
+local RUNNERS = {
+    ["java-jar"] = { "java", "-jar" },
+}
+
 function M.link_bin(ctx, binname, val)
-    local runner, path = val:match("^(%a[%w_]*):(.+)$")
+    -- HYPHENS BELONG IN A RUNNER NAME. The pattern used to accept letters, digits and underscores
+    -- only, so `java-jar:` never matched as a prefix at all: the whole `java-jar:foo.jar` string
+    -- was taken for a PATH, the symlink pointed at a file that cannot exist, and the install
+    -- reported success with nothing in `bin/` (measured on ktfmt; 10 registry entries write it).
+    local runner, path = val:match("^(%a[%w_%-]*):(.+)$")
     path = path or val
     local src = ctx.dir .. "/" .. path
     if runner == nil or runner == "exec" then
@@ -114,7 +126,12 @@ function M.link_bin(ctx, binname, val)
         local launcher = ctx.bin_dir .. "/" .. binname
         local fh = io.open(launcher, "w")
         if fh then
-            fh:write(('#!/bin/sh\nexec %s %s "$@"\n'):format(vim.fn.shellescape(runner), vim.fn.shellescape(src)))
+            local argv = RUNNERS[runner] or { runner }
+            local head = {}
+            for _, word in ipairs(argv) do
+                head[#head + 1] = vim.fn.shellescape(word)
+            end
+            fh:write(('#!/bin/sh\nexec %s %s "$@"\n'):format(table.concat(head, " "), vim.fn.shellescape(src)))
             fh:close()
             M.chmod_x(launcher)
             ctx.add_bin(binname)

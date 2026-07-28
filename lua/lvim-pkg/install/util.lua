@@ -91,6 +91,14 @@ function M.chmod_x(path)
     pcall(vim.uv.fs_chmod, path, 493)
 end
 
+--- A runner prefix that is not a bare command name: what to actually exec, in argv order. The
+--- registry writes `java-jar:` for a runnable jar, which is `java -jar <path>` — spelled as one
+--- token it looked like a command called "java-jar" and the launcher it produced could never run.
+---@type table<string, string[]>
+local RUNNERS = {
+    ["java-jar"] = { "java", "-jar" },
+}
+
 --- Link a RESOLVED bin `val` (a path RELATIVE to `ctx.dir`, optionally prefixed with "<runner>:") into
 --- `ctx.bin_dir` as `binname`, and record it via `ctx.add_bin`. Mason bin templates carry an optional
 --- interpreter prefix: no prefix / "exec:" → a plain executable (chmod + symlink); "python:" / "node:"
@@ -101,14 +109,6 @@ end
 ---@param binname string
 ---@param val string   e.g. "stylua" or "python:bin/jdtls"
 ---@return nil
---- A runner prefix that is not a bare command name: what to actually exec, in argv order. The
---- registry writes `java-jar:` for a runnable jar, which is `java -jar <path>` — spelled as one
---- token it looked like a command called "java-jar" and the launcher it produced could never run.
----@type table<string, string[]>
-local RUNNERS = {
-    ["java-jar"] = { "java", "-jar" },
-}
-
 function M.link_bin(ctx, binname, val)
     -- HYPHENS BELONG IN A RUNNER NAME. The pattern used to accept letters, digits and underscores
     -- only, so `java-jar:` never matched as a prefix at all: the whole `java-jar:foo.jar` string

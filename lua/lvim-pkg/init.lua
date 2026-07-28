@@ -410,6 +410,26 @@ function M.register_provider(name, fn)
     state.providers[name] = fn
 end
 
+--- Contribute a tree-sitter parser the community catalogue does not carry, from a plugin's own
+--- `setup()` — the same self-registration shape as `register_provider`, so installing the plugin
+--- that needs the grammar is enough and no central config has to be edited for it. The entry uses
+--- the registry's own shape (see LvimPkgTsEntry); it is merged over the catalogue and outranks it
+--- on a name collision, exactly like a `config.extra_parsers` entry, which this writes into.
+---
+--- Safe in any load order relative to `setup()`: the registry re-reads the config on every load,
+--- and this drops the in-memory copy so the next read picks the entry up.
+---@param lang string
+---@param entry LvimPkgTsEntry
+---@return nil
+function M.register_parser(lang, entry)
+    if type(lang) ~= "string" or lang == "" or type(entry) ~= "table" or type(entry.source) ~= "table" then
+        return
+    end
+    config.extra_parsers = config.extra_parsers or {}
+    config.extra_parsers[lang] = entry
+    backends.parser.invalidate_registry()
+end
+
 --- Subscribe to an installer event (decoupling — domains never get called directly).
 --- Events: "installing" (active: boolean); "removing" (kind, name) — fired BEFORE a
 --- package's files are deleted; "removed" (kind, name) — fired after.

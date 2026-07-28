@@ -93,8 +93,47 @@ require("lvim-pkg").setup({
     snapshot_dir = nil, -- version-snapshot dir (default: <config>/.snapshots)
     registry_ttl = 7 * 24 * 60 * 60, -- re-fetch a cached catalogue at setup once this old (0 = never)
     max_concurrency = 4, -- max packages installed in parallel per batch
+    -- Tree-sitter parsers the community catalogue does not carry, keyed by language, in the
+    -- registry's own entry shape. Merged over the fetched catalogue and winning a name
+    -- collision, so nothing downstream can tell them apart.
+    extra_parsers = {},
 })
 ```
+
+### Parsers the catalogue does not carry
+
+The parser catalogue is a community list, and a grammar can be missing from it. Rather than
+fork 300 entries someone else maintains, add the one:
+
+```lua
+require("lvim-pkg").setup({
+    extra_parsers = {
+        org = {
+            filetypes = { "org" },
+            source = {
+                -- grammar and queries in one repository
+                type = "self_contained",
+                parser_url = "https://github.com/nvim-orgmode/tree-sitter-org",
+            },
+        },
+    },
+})
+```
+
+A plugin that needs a grammar can contribute it from its OWN `setup()` instead, so installing
+that plugin is enough and no central config is edited for it:
+
+```lua
+require("lvim-pkg").register_parser("org", {
+    filetypes = { "org" },
+    source = { type = "self_contained", parser_url = "https://github.com/nvim-orgmode/tree-sitter-org" },
+})
+```
+
+Either way the language becomes installable, updatable and removable like any catalogue entry.
+`source.type` is one of `self_contained` (grammar and queries in one repo; `queries_dir` names
+the subdirectory when it is not `queries/`), `external_queries` (`parser_url` + `queries_url`)
+or `queries_only` (`url`, reusing another parser named in `requires`).
 
 Everything lvim-pkg installs lives under `root`: `packages/` (Mason binaries),
 `bin/` (linked executables, added to `PATH`) and `ts/parser` + `ts/queries`

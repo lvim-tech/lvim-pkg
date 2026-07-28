@@ -20,18 +20,42 @@ local cache = nil
 ---@type table<string, string>|nil  filetype → lang
 local ft_index = nil
 
+--- Merge `config.extra_parsers` over whatever the catalogue provided. A language the community
+--- registry does not carry is otherwise uninstallable through this engine, and forking the
+--- catalogue for one entry would mean maintaining 300 someone else already maintains. The entries
+--- use the registry's OWN shape, so nothing downstream can tell them apart — and they WIN a name
+--- collision, because an explicit local entry is a deliberate statement about that language.
+---@return integer added
+local function apply_extra()
+    cache = cache or {}
+    ft_index = ft_index or {}
+    local added = 0
+    for lang, entry in pairs(config.extra_parsers or {}) do
+        if type(entry) == "table" and type(entry.source) == "table" then
+            cache[lang] = entry
+            for _, ft in ipairs(entry.filetypes or {}) do
+                ft_index[ft] = lang
+            end
+            added = added + 1
+        end
+    end
+    return added
+end
+
 --- Decode the on-disk registry into the in-memory caches. Returns success.
 ---@return boolean
 local function load_file()
     local f = io.open(paths.ts_registry_file(), "r")
     if not f then
-        return false
+        -- No catalogue on disk yet. The configured extras are still installable — they need no
+        -- download of their own — so this is a partial load rather than a failure.
+        return apply_extra() > 0
     end
     local content = f:read("*a")
     f:close()
     local ok, data = pcall(vim.json.decode, content)
     if not (ok and type(data) == "table") then
-        return false
+        return apply_extra() > 0
     end
     cache = {}
     ft_index = {}
@@ -44,7 +68,17 @@ local function load_file()
             end
         end
     end
+    -- After the catalogue, never before: the extras are meant to override it.
+    apply_extra()
     return true
+end
+
+--- Drop the decoded catalogue. The next read re-decodes the on-disk copy and re-merges the
+--- configured extras — no download, so this is cheap enough to call from a plugin's setup.
+---@return nil
+function M.invalidate()
+    cache = nil
+    ft_index = nil
 end
 
 --- Load the registry from disk if present (synchronous, no fetch).

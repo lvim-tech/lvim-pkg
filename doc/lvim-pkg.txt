@@ -106,6 +106,37 @@ Fields (|LvimPkgConfig|):
   registry_ttl  integer     Seconds before a cached catalogue is re-fetched at
                             setup. 0 disables the age check. Default 7 days.
   max_concurrency integer   Packages installed in parallel per batch. Default 4.
+  extra_parsers table       Tree-sitter parsers the community catalogue does
+                            not carry, keyed by language, in the registry's own
+                            entry shape. Merged over the fetched catalogue and
+                            winning a name collision. Default {}.
+
+                                                  *lvim-pkg-extra-parsers*
+A grammar missing from the catalogue is added as one entry rather than by
+forking three hundred someone else maintains: >lua
+
+    require("lvim-pkg").setup({
+        extra_parsers = {
+            org = {
+                filetypes = { "org" },
+                source = {
+                    type = "self_contained",
+                    parser_url = "https://github.com/nvim-orgmode/tree-sitter-org",
+                },
+            },
+        },
+    })
+<
+A plugin that needs a grammar can contribute it from its own setup() instead,
+so installing that plugin is enough and no central config is edited: >lua
+
+    require("lvim-pkg").register_parser("org", { filetypes = { "org" }, source = { … } })
+<
+Either way the language becomes installable, updatable and removable like any
+catalogue entry. `source.type` is `self_contained` (grammar and queries in one
+repository; `queries_dir` names the subdirectory when it is not `queries/`),
+`external_queries` (`parser_url` + `queries_url`) or `queries_only` (`url`,
+reusing another parser named in `requires`).
 
 ==============================================================================
 4. LAYOUT ON DISK                                         *lvim-pkg-layout*

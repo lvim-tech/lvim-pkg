@@ -56,6 +56,14 @@ function B.ensure_install_dir()
     registry.ensure() -- background; populates the catalogue for available()
 end
 
+--- Drop the in-memory catalogue so the next read rebuilds it — the seam a newly registered
+--- parser needs (`lvim-pkg.register_parser`). Nothing is re-downloaded: the on-disk copy is
+--- re-decoded and the configured extras merged over it again.
+---@return nil
+function B.invalidate_registry()
+    registry.invalidate()
+end
+
 -- ── install engine ────────────────────────────────────────────────────────────
 
 ---@param path string

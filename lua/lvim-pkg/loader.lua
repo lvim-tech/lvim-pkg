@@ -1,5 +1,5 @@
 -- lvim-pkg: plugin introspection store.
--- The host's plugin loader (e.g. the config's core.pack) reports two things here:
+-- The host's plugin loader (lvim-pack) reports two things here:
 -- the static plugin registry (register) and per-plugin load events (record). This
 -- module merges those with vim.pack.get() (path / source / version / active) to
 -- expose rich, lazy.nvim-style data to the installer: load time, load reason,

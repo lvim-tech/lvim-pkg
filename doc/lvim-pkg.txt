@@ -225,7 +225,7 @@ Plugin git data (the pin menu): >lua
 <
 The host's pack loader also calls two submodules directly (not proxied through
 `pkg.*`): `require("lvim-pkg.loader")` for the introspection store above, and
-`require("lvim-pkg.deps").resolve(modules)` to expand each spec's
+`require("lvim-pack.deps").resolve(modules)` to expand each spec's
 `dependencies` into flat module entries (|vim.pack| does not auto-install
 dependencies) before installing.
 

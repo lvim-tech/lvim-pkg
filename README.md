@@ -211,7 +211,7 @@ pkg.load_tags(cb) / git_log(name) / load_git_log(name, cb)
 
 The host's pack loader also calls two submodules directly (not proxied through
 `pkg.*`): `require("lvim-pkg.loader")` backs the introspection store above, and
-`require("lvim-pkg.deps").resolve(modules)` expands each spec's `dependencies`
+`require("lvim-pack.deps").resolve(modules)` (in the loader) expands each spec's `dependencies`
 into flat module entries (`vim.pack` does not auto-install dependencies) before
 installing.
 

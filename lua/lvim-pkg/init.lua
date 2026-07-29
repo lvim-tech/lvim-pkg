@@ -528,12 +528,19 @@ end
 --- git HEAD and each Mason package's installed version. Explicit pins from the active
 --- snapshot are carried over (kept flagged); everything else is a plain reproducibility
 --- record. Overwrites an existing file of the same name.
+---
+--- `opts.mason = false` records the PLUGINS ONLY. The two halves are reproducible in different
+--- senses: a plugin commit is the same revision on every machine, while an installed tool's version
+--- is whatever that machine's package source last offered — so a set meant to pin the distribution
+--- often wants the first without the second.
 ---@param name string
+---@param opts? { mason?: boolean }
 ---@return boolean ok, string? err
-function M.snapshot_save(name)
+function M.snapshot_save(name, opts)
     if not name or name == "" then
         return false, "snapshot name required"
     end
+    opts = opts or {}
     local active = pins.all_full()
     local snap = { plugins = {}, mason = {} }
     for _, info in ipairs(M.plugins()) do

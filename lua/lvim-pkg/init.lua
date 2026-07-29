@@ -551,7 +551,7 @@ function M.snapshot_save(name)
         end
     end
     local ok, install = pcall(require, "lvim-pkg.install")
-    if ok then
+    if ok and opts.mason ~= false then
         for _, mname in ipairs(install.installed()) do
             local v = M.installed_version(mname)
             if v and v ~= "" then

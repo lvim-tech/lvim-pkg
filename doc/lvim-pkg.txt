@@ -234,7 +234,12 @@ checks out / reinstalls only what differs.
   pkg.snapshots()                string[]
   pkg.active_snapshot()          string
   pkg.select_snapshot(name)      boolean
-  pkg.snapshot_save(name)        ok, err?
+  pkg.snapshot_save(name[, opts])  ok, err?  Capture the installed state as
+                                 a snapshot. `opts.mason = false` records the
+                                 PLUGINS ONLY: a plugin commit is the same
+                                 revision on every machine, while a tool's
+                                 installed version is whatever that machine's
+                                 source last offered.
   pkg.snapshot_diff()            { plugins = {...}, mason = {...} }
   pkg.snapshot_restore(diff, cb, on_progress)
   pkg.snapshot_export(dest)      write the active set to a shareable lockfile

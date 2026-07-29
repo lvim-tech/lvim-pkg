@@ -212,7 +212,7 @@ out / reinstalls only what differs.
 pkg.snapshots() -- string[]
 pkg.active_snapshot() -- string
 pkg.select_snapshot(name) -- boolean
-pkg.snapshot_save(name) -- ok, err?
+pkg.snapshot_save(name, opts) -- ok, err?  (opts.mason = false records the PLUGINS only)
 pkg.snapshot_diff() -- { plugins = {{name,from,to}}, mason = {...} }
 pkg.snapshot_restore(diff, cb, on_progress)
 pkg.snapshot_export(dest) -- write the active set to a shareable lockfile; ok, err?

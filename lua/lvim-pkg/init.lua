@@ -262,6 +262,25 @@ function M.install_sdk(spec, cb, opts)
     install.install_sdk(spec, opts, cb or function() end)
 end
 
+--- Install a LuaRocks rock that the mason registry does not carry — `busted` is one: a real,
+--- everyday rock that simply is not in that catalogue, so `install("mason", …)` for it can only
+--- report "no binary appeared". The rock goes into its own tree under the managed packages
+--- directory and its executables are linked into `bin/`, exactly as a registry package would be.
+---@param spec { name: string, version?: string, bins?: string[], server?: string }
+---@param cb?   fun(err: string|nil)
+---@param opts? { on_progress?: fun(name: string, status: string, action: string) }
+---@return nil
+function M.install_rock(spec, cb, opts)
+    local ok, install = pcall(require, "lvim-pkg.install")
+    if not ok then
+        if cb then
+            cb("lvim-pkg.install unavailable")
+        end
+        return
+    end
+    install.install_rock(spec, opts, cb or function() end)
+end
+
 ---@param kind  string
 ---@param names? string[]
 ---@param cb?   function

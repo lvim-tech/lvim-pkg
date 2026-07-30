@@ -29,6 +29,7 @@ local handlers = {
     sdk = require("lvim-pkg.install.sdk"),
     generic = require("lvim-pkg.install.generic"), -- direct downloads (jdtls, …)
     openvsx = require("lvim-pkg.install.openvsx"), -- Open VSX extensions (java-debug-adapter, java-test, …)
+    luarocks = require("lvim-pkg.install.luarocks"), -- Lua rocks (luacheck, digestif, teal-language-server, …)
 }
 
 --- Is the source type installable by this engine?
@@ -256,6 +257,77 @@ function M.install_sdk(spec, opts, cb)
         end
         util.rm_rf_async(bak)
         store.receipt_set(name, { type = "sdk", version = spec.version or spec.ref, bins = bins })
+        cb(nil)
+    end)
+end
+
+--- Install a LuaRocks rock BY NAME, outside the mason registry.
+---
+--- The registry carries five rocks; the ecosystem has thousands, and a provider that needs one of
+--- the others (the Lua provider needs `busted`, which the registry does not list) had no way to ask
+--- for it — `install("mason", …)` resolved nothing and the only symptom was "no binary appeared".
+--- Same tree layout, same receipt, same `bin/` links as a registry package, so removal and the
+--- installed-package view treat it like any other.
+---@param spec { name: string, version?: string, bins?: string[], server?: string }
+---@param opts table
+---@param cb fun(err: string|nil)
+---@return nil
+function M.install_rock(spec, opts, cb)
+    opts = opts or {}
+    local name = spec.name
+    if not name then
+        cb("install_rock: spec needs `name`")
+        return
+    end
+    if in_flight[name] then
+        cb("install already in progress: " .. name)
+        return
+    end
+    in_flight[name] = true
+    local outer_cb = cb
+    cb = function(err)
+        in_flight[name] = nil
+        outer_cb(err)
+    end
+
+    paths.ensure()
+    local dir = paths.package_dir(name)
+    vim.fn.mkdir(dir, "p")
+
+    local bins = {}
+    -- The rock's executables are whatever it installs into `<tree>/bin`; a caller that knows the
+    -- names says so, and the common case (binary == rock name) needs no spec at all.
+    local bin_map = {}
+    for _, b in ipairs(spec.bins or { name }) do
+        bin_map[b] = b
+    end
+    local ctx = {
+        name = name,
+        dir = dir,
+        bin_dir = paths.bin(),
+        purl = {
+            name = name,
+            version = spec.version,
+            qualifiers = spec.server and { repository_url = spec.server } or {},
+        },
+        spec = { bin = bin_map },
+        add_bin = function(binname)
+            bins[#bins + 1] = binname
+        end,
+        progress = function(action)
+            if opts.on_progress then
+                opts.on_progress(name, "pending", action)
+            end
+        end,
+    }
+
+    handlers.luarocks.install(ctx, function(err)
+        if err then
+            util.rm_rf_async(dir)
+            cb(err)
+            return
+        end
+        store.receipt_set(name, { type = "luarocks", version = spec.version, bins = bins })
         cb(nil)
     end)
 end

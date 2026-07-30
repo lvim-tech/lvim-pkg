@@ -26,6 +26,8 @@ end
 ---@field version string|nil  Pinned version, if present
 ---@field subpath string|nil  Subpath after '#' (e.g. golang "cmd/dlv" — the command
 ---                           package inside the module)
+---@field qualifiers table<string, string>  Everything after '?' — the source-specific extras
+---                           (luarocks `repository_url`, …); empty when the id carries none
 
 --- Parse a purl id into its components.
 ---@param id string  e.g. "pkg:github/owner/repo@v1.2.3"
@@ -41,6 +43,19 @@ function M.parse(id)
     end
     -- The subpath (#frag) is the command package inside a module (e.g. golang "cmd/dlv").
     local subpath = rest:match("#(.+)$")
+    -- QUALIFIERS (?a=b&c=d) carry what the source needs beyond a name and a version — luarocks'
+    -- `repository_url` for a rock that lives on the dev channel, for instance. They used to be
+    -- stripped and dropped, so such a package resolved against the wrong server and was reported
+    -- as missing.
+    ---@type table<string, string>
+    local qualifiers = {}
+    local qs = rest:match("%?([^#]*)")
+    for pair in (qs or ""):gmatch("[^&]+") do
+        local k, v = pair:match("^([^=]+)=(.*)$")
+        if k then
+            qualifiers[decode(k)] = decode(v)
+        end
+    end
     -- Strip qualifiers / subpath (?a=b or #frag) before reading the version.
     rest = rest:gsub("[?#].*$", "")
     local name, version = rest, nil
@@ -50,7 +65,13 @@ function M.parse(id)
         name = rest:sub(1, at - 1)
         version = rest:sub(at + 1)
     end
-    return { type = typ, name = decode(name), version = decode(version), subpath = decode(subpath) }
+    return {
+        type = typ,
+        name = decode(name),
+        version = decode(version),
+        subpath = decode(subpath),
+        qualifiers = qualifiers,
+    }
 end
 
 return M

@@ -79,6 +79,47 @@ local function read_json(path)
     return ok and data or nil
 end
 
+--- The newest SEMVER TAG of a git repo (`v0.63.5` beats `v0.63.4`), or nil when it has none.
+---
+--- A registry entry that declares `semver` is released through tags, and fetching such a repo at a branch
+--- name is not merely less precise — it can be impossible: tree-sitter-zsh carries BOTH a branch and a tag
+--- called `main`, which makes GitHub's archive URL ambiguous (HTTP 300, an HTML body, "not in gzip format").
+--- An explicit tag has no such ambiguity, and it is also the version worth recording as installed.
+---@param url string
+---@param cb fun(tag: string|nil)
+local function latest_tag(url, cb)
+    vim.system(
+        { "git", "ls-remote", "--tags", "--refs", url },
+        { text = true },
+        vim.schedule_wrap(function(r)
+            local best, best_parts
+            for name in (r.stdout or ""):gmatch("refs/tags/([^\n]+)") do
+                local parts = {}
+                for n in name:gmatch("%d+") do
+                    parts[#parts + 1] = tonumber(n)
+                end
+                -- Only tags that actually carry a version; `main`, `latest` and friends have no numbers.
+                if #parts > 0 then
+                    local newer = best_parts == nil
+                    if not newer then
+                        for i = 1, math.max(#parts, #best_parts) do
+                            local a, b = parts[i] or 0, best_parts[i] or 0
+                            if a ~= b then
+                                newer = a > b
+                                break
+                            end
+                        end
+                    end
+                    if newer then
+                        best, best_parts = name, parts
+                    end
+                end
+            end
+            cb(best)
+        end)
+    )
+end
+
 --- The authoritative current version string for `lang` — the same value that an install
 --- now would build at. For external_queries that is the queries repo's pinned
 --- `parser_version` (read cheaply from its raw parser.json on main); for a self-contained,
@@ -101,9 +142,20 @@ local function resolve_latest(lang, cb)
             vim.fn.delete(tmp)
             cb(pj and pj.parser_version or nil)
         end)
-    elseif src.parser_url then
+    elseif src.parser_url or src.url then
+        -- `parser_url` belongs to the external_queries shape (parser and queries in separate repos); a
+        -- SELF-CONTAINED entry ships both from ONE repo and names it in `source.url`. Either is the grammar.
+        --
+        -- It must answer in the SAME CURRENCY the installer records, or the outdated check never settles: a
+        -- semver entry is installed at a tag, so comparing it against remote HEAD's sha marks it outdated
+        -- forever — and an auto-update then rebuilds the parser under a running editor, which drops the
+        -- highlighting of every open buffer of that language.
+        local url = src.parser_url or src.url
+        if src.semver or src.parser_semver then
+            return latest_tag(url, cb)
+        end
         vim.system(
-            { "git", "ls-remote", src.parser_url, "HEAD" },
+            { "git", "ls-remote", url, "HEAD" },
             { text = true },
             vim.schedule_wrap(function(r)
                 cb((r.stdout or ""):match("^(%x+)"))
@@ -230,21 +282,35 @@ local function copy_queries(qroot, lang, subdir)
     end
     local dest = queries_dir() .. "/" .. lang
     vim.fn.mkdir(dest, "p")
+    ---@return boolean copied  whether `d` held any `.scm` at all
     local function copy_from(d)
         if not d or vim.fn.isdirectory(d) == 0 then
-            return
+            return false
         end
+        local copied = false
         for name, t in vim.fs.dir(d) do
             if t == "file" and name:match("%.scm$") then
                 pcall(vim.fn.writefile, vim.fn.readfile(d .. "/" .. name), dest .. "/" .. name)
+                copied = true
             end
         end
+        return copied
     end
+    -- Both layouts occur in the wild: the queries sitting directly in the named folder, and a Neovim RUNTIME
+    -- tree with a directory per language (`<dir>/<lang>/*.scm`) — tree-sitter-zsh ships `nvim-queries/zsh/`,
+    -- and copying the folder itself found no `.scm` at all, so the parser installed without highlights. The
+    -- language-scoped path is tried first and the flat one is the fallback, in both shapes.
     if subdir and subdir ~= "" then
-        copy_from(qroot .. "/" .. subdir)
+        local root = qroot .. "/" .. subdir
+        if not copy_from(root .. "/" .. lang) then
+            copy_from(root)
+        end
     else
-        copy_from(qroot)
-        copy_from(qroot .. "/queries")
+        local copied = copy_from(qroot)
+        copied = copy_from(qroot .. "/queries") or copied
+        if not copied then
+            copy_from(qroot .. "/queries/" .. lang)
+        end
     end
 end
 
@@ -312,34 +378,60 @@ local function install_one(lang, cb, seen)
         -- external_queries / self_contained: queries repo (for the pinned version) → parser → compile.
         local function with_queries(qdir)
             local pj = qdir and read_json(qdir .. "/parser.json") or {}
-            local purl = pj.url or src.parser_url
-            local ref = pj.parser_version or "main"
-            fetch_repo(purl, ref, function(e2, pdir)
-                if e2 then
-                    discard_extract(qdir)
-                    return finish(e2)
-                end
-                ---@cast pdir string  fetch_repo guarantees a dir when err is nil
-                local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
-                compile(grammar, parser_dir() .. "/" .. lang .. ".so", function(e3)
-                    if e3 then
+            -- Where the GRAMMAR lives, in the registry's own three shapes: a pinned `parser.json` from the
+            -- queries repo wins; otherwise `parser_url` for an external_queries entry, and `url` for a
+            -- SELF-CONTAINED one, which ships parser and queries from a single repo (zsh is such an entry —
+            -- reading only `parser_url` made it fail with "missing repository url").
+            local purl = pj.url or src.parser_url or src.url
+
+            -- What to fetch, and what to record as installed. A queries repo PINS the grammar revision, which
+            -- always wins. Otherwise an entry that declares `semver` is released through tags — take the newest
+            -- one; anything else tracks the default branch.
+            local function with_ref(ref, version)
+                fetch_repo(purl, ref, function(e2, pdir)
+                    if e2 then
+                        discard_extract(qdir)
+                        return finish(e2)
+                    end
+                    ---@cast pdir string  fetch_repo guarantees a dir when err is nil
+                    local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
+                    compile(grammar, parser_dir() .. "/" .. lang .. ".so", function(e3)
+                        if e3 then
+                            discard_extract(qdir)
+                            discard_extract(pdir)
+                            return finish("compile " .. lang .. ": " .. e3)
+                        end
+                        -- external_queries: `qdir` is the queries repo. self_contained: no queries repo (qdir
+                        -- nil), so queries live in the parser repo — under `source.queries_dir` if named.
+                        local sub = (not qdir) and src.queries_dir or nil
+                        copy_queries(qdir or grammar, lang, sub)
                         discard_extract(qdir)
                         discard_extract(pdir)
-                        return finish("compile " .. lang .. ": " .. e3)
-                    end
-                    -- external_queries: `qdir` is the queries repo. self_contained: no queries repo (qdir nil),
-                    -- so queries live in the parser repo — under `source.queries_dir` when the entry names one.
-                    local sub = (not qdir) and src.queries_dir or nil
-                    copy_queries(qdir or grammar, lang, sub)
-                    discard_extract(qdir)
-                    discard_extract(pdir)
-                    -- pj.parser_version is exactly the built revision (external_queries); nil for a
-                    -- self-contained parser, where record_installed falls back to resolve_latest.
-                    record_installed(lang, pj.parser_version, function()
-                        finish(nil)
+                        -- The revision actually built, when we know it (the queries repo's pin or the tag we
+                        -- chose); record_installed falls back to resolve_latest when we do not.
+                        record_installed(lang, version, function()
+                            finish(nil)
+                        end)
                     end)
                 end)
-            end)
+            end
+
+            if pj.parser_version then
+                with_ref(pj.parser_version, pj.parser_version)
+            elseif src.semver or src.parser_semver then
+                latest_tag(purl or "", function(tag)
+                    -- No tag means the lookup failed (network, moved repo) — for a semver repo the literal
+                    -- `main` is no fallback: on one like tree-sitter-zsh (branch AND tag `main`) the archive
+                    -- URL is ambiguous, so fail plainly instead of degrading into the HTTP 300.
+                    if not tag then
+                        discard_extract(qdir)
+                        return finish("no release tag found for " .. lang .. " at " .. (purl or "?"))
+                    end
+                    with_ref(tag, tag)
+                end)
+            else
+                with_ref("main", nil)
+            end
         end
         if src.queries_url then
             fetch_repo(src.queries_url, "main", function(err, qdir)
@@ -427,19 +519,36 @@ function B.install_queries(name, cb)
                 cb(nil)
             end)
         end
-        -- self_contained: queries live in the parser repo.
-        if src.parser_url then
-            return fetch_repo(src.parser_url, "main", function(err, pdir)
-                if err then
-                    return cb(err)
-                end
-                ---@cast pdir string  fetch_repo guarantees a dir when err is nil
-                local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
-                -- honour a self_contained entry's `source.queries_dir` here too (the full-install path already
-                -- does) — else a queries-only migration copies the grammar's own .scm, not the Neovim set.
-                copy_queries(grammar, name, src.queries_dir)
-                cb(nil)
-            end)
+        -- self_contained: queries live in the parser repo — which such an entry names in `source.url`
+        -- (`parser_url` is the external_queries shape), so both spellings are accepted.
+        local purl = src.parser_url or src.url
+        if purl then
+            -- Same ref rules as the full install: a semver entry is released through tags, and fetching a
+            -- repo like tree-sitter-zsh (branch AND tag `main`) at the literal `main` is ambiguous (HTTP 300).
+            local function fetch_at(ref)
+                fetch_repo(purl, ref, function(err, pdir)
+                    if err then
+                        return cb(err)
+                    end
+                    ---@cast pdir string  fetch_repo guarantees a dir when err is nil
+                    local grammar = src.parser_location and (pdir .. "/" .. src.parser_location) or pdir
+                    -- honour a self_contained entry's `source.queries_dir` here too (the full-install path
+                    -- already does) — else a queries-only migration copies the grammar's own .scm, not the
+                    -- Neovim set.
+                    copy_queries(grammar, name, src.queries_dir)
+                    discard_extract(pdir)
+                    cb(nil)
+                end)
+            end
+            if src.semver or src.parser_semver then
+                return latest_tag(purl, function(tag)
+                    if not tag then
+                        return cb("no release tag found for " .. name .. " at " .. purl)
+                    end
+                    fetch_at(tag)
+                end)
+            end
+            return fetch_at("main")
         end
         cb(nil)
     end)

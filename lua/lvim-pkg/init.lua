@@ -278,7 +278,7 @@ function M.install_rock(spec, cb, opts)
         end
         return
     end
-    install.install_rock(spec, opts, cb or function() end)
+    install.install_rock(spec, opts or {}, cb or function() end)
 end
 
 ---@param kind  string

@@ -22,7 +22,7 @@ function B.installed()
         -- git branch/tag (and, when online, fetch) subprocesses PER plugin, which is
         -- ruinously slow when this is called in a membership loop.
         for _, plugin in ipairs(vim.pack.get(nil, { info = false })) do
-            local name = (plugin.spec and plugin.spec.name) or plugin.name
+            local name = plugin.spec and plugin.spec.name
             if name then
                 names[#names + 1] = name
             end

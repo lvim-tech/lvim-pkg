@@ -13,7 +13,16 @@ local M = {}
 function M.install(ctx, cb)
     ctx.progress("cargo install")
     local args = { "cargo", "install", "--root", ctx.dir, "--locked", ctx.purl.name }
-    if ctx.purl.version then
+    -- A `repository_url` qualifier marks a crate the registry sources FROM GIT, not crates.io
+    -- (mason semantics): the version is a git tag there, and the crates.io name may even belong
+    -- to a different project (statix v0.5.8 is git-only; the crates.io "statix" is unrelated).
+    local repo = (ctx.purl.qualifiers or {}).repository_url
+    if repo then
+        vim.list_extend(args, { "--git", repo })
+        if ctx.purl.version then
+            vim.list_extend(args, { "--tag", ctx.purl.version })
+        end
+    elseif ctx.purl.version then
         vim.list_extend(args, { "--version", (ctx.purl.version:gsub("^v", "")) })
     end
     util.run(args, {}, function(err)

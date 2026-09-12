@@ -34,10 +34,10 @@ function M.check()
     -- ── core ──────────────────────────────────────────────────────────────────
     h.start("lvim-pkg: core")
 
-    if vim.fn.has("nvim-0.10") == 1 then
-        h.ok("Neovim >= 0.10")
+    if vim.fn.has("nvim-0.12") == 1 then
+        h.ok("Neovim >= 0.12")
     else
-        h.error("Neovim >= 0.10 is required (vim.system, vim.uv, vim.fs)")
+        h.error("Neovim >= 0.12 is required (the lvim-tech set targets 0.12)")
     end
 
     -- Install state is plain JSON under the root (state.json + snapshot files); a readable

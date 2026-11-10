@@ -68,6 +68,155 @@ function M.want(name)
     end
 end
 
+-- ── Asking the client while the session runs ─────────────────────────────────
+--
+-- On the server end of `:connect ssh://`, the client that connected is still running (it holds the
+-- tunnel) and follows `requests` (lvim-pack's `serve_requests`). A package this server cannot build is
+-- offered to the user at once; a "yes" appends its name there, the client builds it and copies it in,
+-- and the `import.json` it writes is adopted here as soon as it appears. A client that failed writes
+-- `failed.json` instead (name → reason).
+
+M.REQUESTS = "requests"
+M.FAILED = "failed.json"
+
+--- Why this Neovim started (`v:startreason`), or nil. Tests replace it.
+---@return string|nil
+function M.start_reason()
+    local ok, reason = pcall(function()
+        return vim.v.startreason
+    end)
+    return ok and reason or nil
+end
+
+--- Ask the user. Tests replace it.
+---@param message string
+---@return boolean
+function M.confirm(message)
+    return vim.fn.confirm(message, "&Yes\n&No", 1) == 1
+end
+
+local asked = {} ---@type table<string, boolean>  offered in this session (yes or no)
+local queue = {} ---@type string[]
+local queued_at = nil ---@type uv.uv_timer_t|nil
+
+--- Append names to the requests the client follows.
+---@param names string[]
+local function request(names)
+    vim.fn.mkdir(paths.root(), "p")
+    local fd = io.open(paths.root() .. "/" .. M.REQUESTS, "a")
+    if fd then
+        fd:write(table.concat(names, "\n") .. "\n")
+        fd:close()
+    end
+end
+
+--- Offer what is queued, in one question (several parsers fail together when a file opens).
+local function offer()
+    local names = queue
+    queue = {}
+    if #names == 0 then
+        return
+    end
+    table.sort(names)
+    local msg = ("This server has no toolchain to build: %s.\nBuild on your machine and send it now?"):format(
+        table.concat(names, ", ")
+    )
+    if M.confirm(msg) then
+        request(names)
+        vim.notify("lvim-pkg: building on your machine: " .. table.concat(names, ", "), vim.log.levels.INFO)
+    end
+end
+
+--- `name` (a package, or `ts:<lang>`) could not be built here for want of a tool: remember it for the next
+--- connect, and on a remote-ssh server offer to have the client build and send it now.
+---@param name string
+function M.missing(name)
+    pcall(M.want, name)
+    if M.start_reason() ~= "remote-ssh" or asked[name] then
+        return
+    end
+    asked[name] = true
+    queue[#queue + 1] = name
+    if queued_at then
+        return
+    end
+    queued_at = vim.defer_fn(function()
+        queued_at = nil
+        offer()
+    end, 300)
+end
+
+--- Report what a client could not build, once.
+local function read_failed()
+    local file = paths.root() .. "/" .. M.FAILED
+    local fd = io.open(file, "r")
+    if not fd then
+        return
+    end
+    local raw = fd:read("*a")
+    fd:close()
+    os.remove(file)
+    local ok, data = pcall(vim.json.decode, raw or "")
+    if not ok or type(data) ~= "table" then
+        return
+    end
+    for name, reason in pairs(data) do
+        vim.notify(
+            ("lvim-pkg: your machine could not build %s: %s"):format(name, tostring(reason)),
+            vim.log.levels.ERROR
+        )
+    end
+end
+
+--- Adopt now, and let what was adopted take effect in the open buffers: FileType runs again, which
+--- starts a parser or a language server that was missing when the buffer opened.
+local function adopt_and_apply()
+    local adopted = M.adopt()
+    if #adopted == 0 then
+        return
+    end
+    vim.notify("lvim-pkg: received from your machine: " .. table.concat(adopted, ", "), vim.log.levels.INFO)
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype ~= "" and vim.bo[buf].buftype == "" then
+            pcall(vim.api.nvim_exec_autocmds, "FileType", { buffer = buf, modeline = false })
+        end
+    end
+end
+
+local watcher = nil ---@type uv.uv_fs_event_t|nil
+
+--- On a remote-ssh server: watch the root for what a client sends while the session runs.
+---@return boolean watching
+function M.watch()
+    if watcher or M.start_reason() ~= "remote-ssh" then
+        return watcher ~= nil
+    end
+    local root = paths.root()
+    vim.fn.mkdir(root, "p")
+    watcher = vim.uv.new_fs_event()
+    if not watcher then
+        return false
+    end
+    local pending = false
+    local ok = watcher:start(root, {}, function(_, filename)
+        if (filename ~= M.FILE and filename ~= M.FAILED) or pending then
+            return
+        end
+        pending = true
+        vim.defer_fn(function()
+            pending = false
+            read_failed()
+            adopt_and_apply()
+        end, 200)
+    end)
+    if ok ~= 0 then
+        watcher:close()
+        watcher = nil
+        return false
+    end
+    return true
+end
+
 ---@class LvimPkgImport
 ---@field type string
 ---@field version string|nil

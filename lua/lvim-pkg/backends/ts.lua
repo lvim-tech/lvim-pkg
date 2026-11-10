@@ -601,6 +601,11 @@ function B.install(names, cb)
                 return
             end
             install_one(name, function(err)
+                -- No compiler here: remember it, and on a remote-ssh server offer to build it on the client.
+                local import = require("lvim-pkg.import")
+                if err and import.missing_tool(err) then
+                    pcall(import.missing, RECEIPT_PREFIX .. name)
+                end
                 first_err = first_err or err
                 done = done + 1
                 if done == total then

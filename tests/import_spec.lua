@@ -101,3 +101,75 @@ it("a missing tool is wanted until a copy is adopted", function()
     eq({ "gopls-test" }, import.adopt())
     eq(0, vim.fn.filereadable(root .. "/" .. import.WANTED), "no longer wanted")
 end)
+
+describe("lvim-pkg: asking the client while a remote-ssh session runs")
+
+it("offers what cannot be built in one question, and a yes is a request the client follows", function()
+    local root = paths.root()
+    local saved_reason, saved_confirm = import.start_reason, import.confirm
+    local questions = {}
+    import.start_reason = function()
+        return "remote-ssh"
+    end
+    import.confirm = function(msg)
+        questions[#questions + 1] = msg
+        return true
+    end
+    os.remove(root .. "/" .. import.REQUESTS)
+    import.missing("ts:lvimq1")
+    import.missing("ts:lvimq2")
+    import.missing("ts:lvimq1")
+    vim.wait(2000, function()
+        return #questions > 0
+    end, 20)
+    eq(1, #questions, "one question for the batch")
+    truthy(questions[1]:find("ts:lvimq1, ts:lvimq2", 1, true), questions[1])
+    eq({ "ts:lvimq1", "ts:lvimq2" }, vim.fn.readfile(root .. "/" .. import.REQUESTS))
+
+    import.missing("ts:lvimq1")
+    vim.wait(500, function()
+        return false
+    end, 50)
+    eq(1, #questions, "asked once per session")
+    import.start_reason, import.confirm = saved_reason, saved_confirm
+end)
+
+it("a local editor only remembers it for the next connect", function()
+    local saved_reason, saved_confirm = import.start_reason, import.confirm
+    local asked = false
+    import.start_reason = function()
+        return nil
+    end
+    import.confirm = function()
+        asked = true
+        return true
+    end
+    import.missing("lvim-local-only")
+    vim.wait(500, function()
+        return false
+    end, 50)
+    eq(false, asked)
+    eq(false, import.watch(), "nothing to watch here")
+    local wanted = vim.json.decode(table.concat(vim.fn.readfile(paths.root() .. "/" .. import.WANTED), ""))
+    eq(true, wanted["lvim-local-only"])
+    import.start_reason, import.confirm = saved_reason, saved_confirm
+end)
+
+it("what the client sends is adopted as soon as it arrives", function()
+    local root = paths.root()
+    local saved_reason = import.start_reason
+    import.start_reason = function()
+        return "remote-ssh"
+    end
+    eq(true, import.watch())
+    vim.fn.writefile(
+        { vim.json.encode({ ["ts:lvimwatched"] = { type = "parser", version = "w1" } }) },
+        root .. "/import.json.tmp"
+    )
+    vim.uv.fs_rename(root .. "/import.json.tmp", root .. "/" .. import.FILE)
+    vim.wait(3000, function()
+        return store.receipt_get("ts:lvimwatched") ~= nil
+    end, 20)
+    eq("w1", store.receipt_get("ts:lvimwatched").version)
+    import.start_reason = saved_reason
+end)

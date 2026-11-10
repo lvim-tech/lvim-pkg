@@ -222,7 +222,7 @@ function M.install(name, opts, cb)
             -- No toolchain to build it here: a client connecting over ssh copies its own build next time.
             local import = require("lvim-pkg.import")
             if import.missing_tool(err) then
-                pcall(import.want, name)
+                pcall(import.missing, name)
             end
             cb(err)
             return

@@ -70,7 +70,10 @@ function M.setup(opts)
     -- Before anything checks what is installed: packages another machine copied in (a server without the
     -- toolchain to build them) become ordinary installs.
     pcall(function()
-        require("lvim-pkg.import").adopt()
+        local import = require("lvim-pkg.import")
+        import.adopt()
+        -- And, on a remote-ssh server, what the client sends while this session runs.
+        import.watch()
     end)
     paths.ensure_path()
     -- Put our parser/query dir on the rtp and kick off the ts registry refresh.

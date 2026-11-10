@@ -139,7 +139,12 @@ function M.run(cmd, opts, cb)
     end)
     if not ok then
         stop_timer()
-        cb(tostring(err))
+        -- The usual reason on a server: the tool is simply not there. Say so, not "ENOENT … (cmd): 'cc'".
+        if tostring(err):find("ENOENT", 1, true) and vim.fn.executable(cmd[1]) == 0 then
+            cb(("%s is not installed on this machine"):format(cmd[1]))
+        else
+            cb(tostring(err))
+        end
         return
     end
     if proc.pid then

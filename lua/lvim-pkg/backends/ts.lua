@@ -229,6 +229,21 @@ local function fetch_repo(url, ref, cb)
     end)
 end
 
+B.CC = { "cc", "gcc", "clang" }
+B.CXX = { "c++", "g++", "clang++" }
+
+--- The first C (or C++) compiler found here, or nil.
+---@param cxx boolean|nil
+---@return string|nil
+function B.compiler(cxx)
+    for _, c in ipairs(cxx and B.CXX or B.CC) do
+        if vim.fn.executable(c) == 1 then
+            return c
+        end
+    end
+    return nil
+end
+
 --- Compile a grammar directory's parser into `out` (.so), handling an optional
 --- C or C++ external scanner, and running `tree-sitter generate` first when the
 --- grammar ships no pre-generated src/parser.c.
@@ -239,12 +254,22 @@ local function compile(dir, out, cb)
     local src = dir .. "/src"
     local function do_cc()
         local sources = { src .. "/parser.c" }
-        local compiler = "cc"
+        local cxx = false
         if vim.fn.filereadable(src .. "/scanner.c") == 1 then
             sources[#sources + 1] = src .. "/scanner.c"
         elseif vim.fn.filereadable(src .. "/scanner.cc") == 1 then
             sources[#sources + 1] = src .. "/scanner.cc"
-            compiler = "c++"
+            cxx = true
+        end
+        -- `cc` / `c++` where they exist; a system with only gcc or clang under their own names works too.
+        local compiler = B.compiler(cxx)
+        if not compiler then
+            return cb(
+                ("no %s compiler on this machine (looked for %s)"):format(
+                    cxx and "C++" or "C",
+                    table.concat(cxx and B.CXX or B.CC, ", ")
+                )
+            )
         end
         vim.fn.mkdir(vim.fn.fnamemodify(out, ":h"), "p")
         local cmd = { compiler, "-o", out, "-shared", "-Os", "-fPIC", "-I" .. src }

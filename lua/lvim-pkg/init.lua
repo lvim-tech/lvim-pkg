@@ -67,6 +67,11 @@ function M.setup(opts)
     })
     -- Make our installer's bin directory available to spawned tools/LSP servers.
     paths.ensure()
+    -- Before anything checks what is installed: packages another machine copied in (a server without the
+    -- toolchain to build them) become ordinary installs.
+    pcall(function()
+        require("lvim-pkg.import").adopt()
+    end)
     paths.ensure_path()
     -- Put our parser/query dir on the rtp and kick off the ts registry refresh.
     backends.parser.ensure_install_dir()

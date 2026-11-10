@@ -219,6 +219,11 @@ function M.install(name, opts, cb)
             if backed_up then
                 pcall(vim.uv.fs_rename, bak, dir) -- restore the previous working install
             end
+            -- No toolchain to build it here: a client connecting over ssh copies its own build next time.
+            local import = require("lvim-pkg.import")
+            if import.missing_tool(err) then
+                pcall(import.want, name)
+            end
             cb(err)
             return
         end

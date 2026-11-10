@@ -554,7 +554,7 @@ function B.install_queries(name, cb)
     end)
 end
 
---- Install parsers, at most `config.max_concurrency` compiling at once (a worker pool —
+--- Install parsers, at most `util.concurrency()` compiling at once (a worker pool —
 --- different languages write independent .so/query files, so they parallelise safely). Waits
 --- for the whole batch; `cb(err)` reports the first error encountered (nil when all succeed).
 ---@param names string[]
@@ -567,7 +567,7 @@ function B.install(names, cb)
         if total == 0 then
             return cb(nil)
         end
-        local cap = math.max(1, config.max_concurrency or 4)
+        local cap = util.concurrency()
         local next_idx, done, first_err = 0, 0, nil
         local function start_next()
             next_idx = next_idx + 1

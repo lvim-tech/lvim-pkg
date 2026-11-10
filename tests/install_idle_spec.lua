@@ -51,3 +51,83 @@ it("failure and success are reported as before", function()
     _, err = run({ "lvim-no-such-command-xyz" }, 0)
     truthy(err and err ~= "", "a command that cannot start is an error")
 end)
+
+describe("lvim-pkg: install commands are stopped with everything they started")
+
+--- Whether process `pid` is still alive.
+local function alive(pid)
+    return vim.system({ "kill", "-0", tostring(pid) }):wait().code == 0
+end
+
+--- Wait for a pid written by the command into `file`.
+local function read_pid(file)
+    local pid
+    vim.wait(5000, function()
+        local f = io.open(file)
+        pid = f and tonumber(f:read("*l") or "")
+        if f then
+            f:close()
+        end
+        return pid ~= nil
+    end, 10)
+    return pid
+end
+
+it("a hung command's children are stopped too", function()
+    local file = vim.fn.tempname()
+    local done, err = false, nil
+    -- The child sleeps on; npm's install scripts are such children.
+    util.run({ "sh", "-c", "sleep 30 & echo $! > " .. file .. "; wait" }, { idle_timeout = 300 }, function(e)
+        done, err = true, e
+    end)
+    local child = read_pid(file)
+    truthy(child, "the child started")
+    vim.wait(10000, function()
+        return done
+    end, 10)
+    truthy(err and err:find("stopped as hung", 1, true), tostring(err))
+    vim.wait(2000, function()
+        return not alive(child)
+    end, 20)
+    eq(false, alive(child), "the child did not outlive the command")
+end)
+
+it("stop_all ends every running command and its children, and none counts as a success", function()
+    local file = vim.fn.tempname()
+    local done, err = false, nil
+    util.run({ "sh", "-c", "sleep 30 & echo $! > " .. file .. "; wait" }, { idle_timeout = 0 }, function(e)
+        done, err = true, e
+    end)
+    local child = read_pid(file)
+    truthy(child, "the child started")
+    util.stop_all()
+    vim.wait(5000, function()
+        return done
+    end, 10)
+    eq(true, done)
+    truthy(err ~= nil, "a stopped install is not reported as installed")
+    vim.wait(2000, function()
+        return not alive(child)
+    end, 20)
+    eq(false, alive(child), "the child did not outlive the command")
+end)
+
+describe("lvim-pkg: how many packages install at once")
+
+it("is max_concurrency here and remote_concurrency on a :connect ssh:// server", function()
+    local config = require("lvim-pkg.config")
+    local saved_max, saved_remote = config.max_concurrency, config.remote_concurrency
+    config.max_concurrency, config.remote_concurrency = 4, 1
+    local ok, reason = pcall(function()
+        return vim.v.startreason
+    end)
+    if ok and reason == "remote-ssh" then
+        eq(1, util.concurrency())
+    else
+        eq(4, util.concurrency())
+    end
+    config.max_concurrency = 0
+    config.remote_concurrency = 0
+    eq(1, util.concurrency(), "never less than one")
+    config.max_concurrency, config.remote_concurrency = saved_max, saved_remote
+end)

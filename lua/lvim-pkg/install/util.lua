@@ -5,6 +5,53 @@
 
 local M = {}
 
+local is_win = vim.fn.has("win32") == 1
+
+--- The install commands still running, by pid. Each is the leader of its own process group (see `M.run`), so
+--- stopping it reaches everything it forked: `npm install` runs its scripts in children that a signal to npm
+--- alone would leave behind.
+---@type table<integer, vim.SystemObj>
+local running = {}
+
+--- Signal a running command together with every process it started.
+---@param proc vim.SystemObj
+---@param signal "sigterm"|"sigkill"
+local function signal_tree(proc, signal)
+    if not is_win and proc.pid then
+        if pcall(vim.uv.kill, -proc.pid, signal) then
+            return
+        end
+    end
+    pcall(function()
+        proc:kill(signal)
+    end)
+end
+
+--- Stop every install command still running. Called when the editor exits: a command it started is not
+--- stopped with it (a headless server — `:connect ssh://` — has no terminal whose hangup would reach them),
+--- so an install left running would go on alone, with no idle timer any more to end it if it hangs.
+function M.stop_all()
+    for pid, proc in pairs(running) do
+        running[pid] = nil
+        signal_tree(proc, "sigterm")
+    end
+end
+
+--- How many packages may install at once. On a server reached through `:connect ssh://` it is
+--- `config.remote_concurrency` (1 by default): shared hosting limits the processes and threads of an account,
+--- and several package managers at once — each with its own pool of workers — exhaust it, after which every
+--- fork on the account fails until they end, the editor's own included.
+---@return integer
+function M.concurrency()
+    local ok_cfg, config = pcall(require, "lvim-pkg.config")
+    config = ok_cfg and config or {}
+    local ok, reason = pcall(function()
+        return vim.v.startreason
+    end)
+    local cap = (ok and reason == "remote-ssh" and config.remote_concurrency) or config.max_concurrency or 4
+    return math.max(1, cap)
+end
+
 --- Run a command asynchronously; `cb(err)` with err=nil on success.
 ---
 --- A command that writes nothing for `config.idle_timeout` ms is stopped (SIGTERM, then SIGKILL) and reported
@@ -35,16 +82,12 @@ function M.run(cmd, opts, cb)
             timer:stop()
             timer:start(idle, 0, function()
                 hung = true
-                pcall(function()
-                    proc:kill("sigterm")
-                end)
+                signal_tree(proc, "sigterm")
                 -- A process that ignores SIGTERM is killed outright a little later.
                 vim.defer_fn(function()
-                    pcall(function()
-                        if not proc:is_closing() then
-                            proc:kill("sigkill")
-                        end
-                    end)
+                    if not proc:is_closing() then
+                        signal_tree(proc, "sigkill")
+                    end
                 end, 5000)
             end)
         end
@@ -60,19 +103,35 @@ function M.run(cmd, opts, cb)
     local ok, err = pcall(function()
         proc = vim.system(
             cmd,
-            { cwd = opts.cwd, env = opts.env, text = true, stdout = collect(out), stderr = collect(errs) },
+            -- `detach` makes the command the leader of a new process group, so `signal_tree` can stop all of it.
+            {
+                cwd = opts.cwd,
+                env = opts.env,
+                text = true,
+                detach = not is_win,
+                stdout = collect(out),
+                stderr = collect(errs),
+            },
             vim.schedule_wrap(function(res)
                 stop_timer()
+                if proc then
+                    running[proc.pid] = nil
+                end
                 if hung then
-                    cb(("no output for %d min; stopped as hung: %s"):format(
-                        math.floor(idle / 60000 + 0.5),
-                        table.concat(cmd, " ")
-                    ))
-                elseif res.code == 0 then
+                    cb(
+                        ("no output for %d min; stopped as hung: %s"):format(
+                            math.floor(idle / 60000 + 0.5),
+                            table.concat(cmd, " ")
+                        )
+                    )
+                elseif res.code == 0 and (res.signal or 0) == 0 then
                     cb(nil)
                 else
+                    -- A command ended by a signal reports exit code 0: it did not succeed.
                     local stderr, stdout = table.concat(errs), table.concat(out)
-                    local msg = (stderr ~= "" and stderr) or (stdout ~= "" and stdout) or ("exit " .. res.code)
+                    local status = (res.signal or 0) ~= 0 and ("killed by signal " .. res.signal)
+                        or ("exit " .. res.code)
+                    local msg = (stderr ~= "" and stderr) or (stdout ~= "" and stdout) or status
                     cb(vim.trim(tostring(msg)))
                 end
             end)
@@ -82,6 +141,9 @@ function M.run(cmd, opts, cb)
         stop_timer()
         cb(tostring(err))
         return
+    end
+    if proc.pid then
+        running[proc.pid] = proc
     end
     arm()
 end

@@ -70,11 +70,50 @@ function M.receipt(name)
     return data
 end
 
---- Was `name` installed by this engine?
+--- The executables a registry package declares (`bin` keys), or {} when it declares none / is unknown.
+---@param name string
+---@return string[]
+local function declared_bins(name)
+    local spec = registry.get(name)
+    local out = {}
+    for binname in pairs((spec and spec.bin) or {}) do
+        out[#out + 1] = binname
+    end
+    table.sort(out)
+    return out
+end
+
+--- Was `name` installed by this engine, and is that install still there? A receipt alone is not proof: an
+--- install that reported success yet left an empty directory (seen with npm on a shared host: a receipt with
+--- `bins = {}` over an empty package dir) would otherwise count as installed forever and never be retried.
+--- So the package directory must hold something, every bin the receipt lists must resolve, and an npm package
+--- that declares executables must have linked at least one.
 ---@param name string
 ---@return boolean
 function M.is_installed(name)
-    return M.receipt(name) ~= nil
+    local r = M.receipt(name)
+    if not r then
+        return false
+    end
+    if r.type == "parser" then
+        return true
+    end
+    local dir = paths.package_dir(name)
+    if vim.fn.isdirectory(dir) == 0 or #vim.fn.readdir(dir) == 0 then
+        return false
+    end
+    local bins = r.bins or {}
+    for _, b in ipairs(bins) do
+        if not vim.uv.fs_stat(paths.bin() .. "/" .. b) then
+            return false
+        end
+    end
+    -- An npm package always links what it declares (`npm:<bin>` from node_modules/.bin); other sources may
+    -- declare entries that are not linked by design (pypi's `pyvenv:` module runners), so only npm is held to it.
+    if r.type == "npm" and #bins == 0 and #declared_bins(name) > 0 then
+        return false
+    end
+    return true
 end
 
 --- Names of all packages installed by this engine.
@@ -181,6 +220,23 @@ function M.install(name, opts, cb)
                 pcall(vim.uv.fs_rename, bak, dir) -- restore the previous working install
             end
             cb(err)
+            return
+        end
+        -- The installer said yes, but an npm package that declares executables and linked none installed nothing
+        -- usable (npm on a shared host once exited 0 and left an empty directory). That is a failure: no
+        -- receipt, the previous install back, and a message that says what is missing.
+        local declared = p.type == "npm" and declared_bins(name) or {}
+        if #declared > 0 and #bins == 0 then
+            util.rm_rf_async(dir)
+            if backed_up then
+                pcall(vim.uv.fs_rename, bak, dir)
+            end
+            cb(
+                ("%s install reported success but produced none of its executables (%s)"):format(
+                    p.type,
+                    table.concat(declared, ", ")
+                )
+            )
             return
         end
         util.rm_rf_async(bak) -- success: drop the backup off the main thread

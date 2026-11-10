@@ -57,6 +57,14 @@ function M.setup(opts)
             end
         end
     end
+    -- Installs still running when the editor exits are stopped with it, rather than left behind without
+    -- anything to end them (see install.util.stop_all).
+    vim.api.nvim_create_autocmd("VimLeavePre", {
+        group = vim.api.nvim_create_augroup("LvimPkgStopInstalls", { clear = true }),
+        callback = function()
+            require("lvim-pkg.install.util").stop_all()
+        end,
+    })
     -- Make our installer's bin directory available to spawned tools/LSP servers.
     paths.ensure()
     paths.ensure_path()

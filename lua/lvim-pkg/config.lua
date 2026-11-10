@@ -18,6 +18,9 @@
 ---                                      reporting is never cut short.
 ---@field max_concurrency integer       Maximum packages installed in parallel (per batch).
 ---                                      Default 4.
+---@field remote_concurrency integer    The same limit inside a server opened with `:connect ssh://`.
+---                                      Default 1: shared hosting caps an account's processes and
+---                                      threads, and parallel package managers exhaust it.
 ---@field extra_parsers   table<string, LvimPkgTsEntry>  Tree-sitter parsers the community
 ---                                      catalogue does not carry, keyed by language. Entries use
 ---                                      the registry's OWN shape, so nothing else in the engine
@@ -47,6 +50,7 @@ return {
     snapshot_dir = nil,
     registry_ttl = 7 * 24 * 60 * 60,
     max_concurrency = 4,
+    remote_concurrency = 1,
     -- An install that writes nothing for this long is stopped as hung. Without it a stuck process (a registry
     -- that never answered) kept its package "installing" forever, and every later attempt queued behind it.
     idle_timeout = 10 * 60 * 1000,

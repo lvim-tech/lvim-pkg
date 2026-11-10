@@ -9,7 +9,7 @@
 
 local registry = require("lvim-pkg.registry")
 local install = require("lvim-pkg.install")
-local config = require("lvim-pkg.config")
+local util = require("lvim-pkg.install.util")
 local snapshot = require("lvim-pkg.snapshot")
 
 local B = { kind = "mason" }
@@ -41,7 +41,7 @@ function B.is_installed(name)
 end
 
 --- Install one or more registry packages via the own engine, at most
---- `config.max_concurrency` at a time (a worker pool, so a big batch does not fork dozens of
+--- `util.concurrency()` at a time (a worker pool, so a big batch does not fork dozens of
 --- processes at once).
 ---@param names string[]
 ---@param cb? fun(results: table<string, string|true>)  name → true (ok) | error string
@@ -62,7 +62,7 @@ function B.install(names, cb, opts)
             opts.on_progress(name, "pending", "Queued...")
         end
     end
-    local cap = math.max(1, config.max_concurrency or 4)
+    local cap = util.concurrency()
     local next_idx, done = 0, 0
     local function start_next()
         next_idx = next_idx + 1

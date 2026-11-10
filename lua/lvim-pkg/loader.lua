@@ -35,6 +35,10 @@ local registry = {}
 local records = {}
 ---@type table<string, boolean>  name → an upstream update is available
 local outdated = {}
+--- A dev checkout's standing against its remote, set by L.check_outdated: name → { behind, ahead, dirty }.
+--- `behind` is a count, or "?" when the remote has commits this clone has not fetched.
+---@type table<string, { behind: integer|string, ahead: integer, dirty: boolean }>
+local local_states = {}
 ---@type table<string, string|false>  name → tag at HEAD (false = none), nil = not read
 local tags = {}
 ---@type table<string, string|false>  name → branch (current/default), false = none
@@ -187,6 +191,7 @@ function L.unregister(name)
     registry[name] = nil
     records[name] = nil
     outdated[name] = nil
+    local_states[name] = nil
     tags[name] = nil
     branches[name] = nil
     git_log[name] = nil
@@ -269,6 +274,9 @@ function L.info(name)
         dependency = reg.dependency == true,
         dep_of = reg.dep_of,
         outdated = outdated[name] == true,
+        ahead = local_states[name] and local_states[name].ahead or nil,
+        behind = local_states[name] and local_states[name].behind or nil,
+        dirty = local_states[name] and local_states[name].dirty or nil,
     }
 end
 
@@ -300,6 +308,54 @@ function L.stats()
     return { loaded = loaded, total = total }
 end
 
+--- How a dev checkout stands against its remote, WITHOUT changing the repository (no fetch): the remote tip of
+--- the current branch comes from `git ls-remote`. When this clone already has that commit, the exact counts
+--- come from `git rev-list --left-right --count`; when it does not, the remote has commits not fetched here
+--- (`behind = "?"`) and `ahead` is counted against the last fetched `origin/<branch>`. `cb(nil)` for a clone
+--- with no branch or no `origin`.
+---@param dir string
+---@param cb fun(state: { behind: integer|string, ahead: integer, dirty: boolean }|nil)
+function L.check_local(dir, cb)
+    local function git(args, k)
+        local ok = pcall(vim.system, vim.list_extend({ "git", "-C", dir }, args), { text = true }, function(r)
+            k(r.code == 0 and vim.trim(r.stdout or "") or nil)
+        end)
+        if not ok then
+            k(nil)
+        end
+    end
+    local function counts(range, k)
+        git({ "rev-list", "--left-right", "--count", range }, function(out)
+            local left, right = (out or ""):match("^(%d+)%s+(%d+)$")
+            k(tonumber(left), tonumber(right))
+        end)
+    end
+    git({ "status", "--porcelain" }, function(status)
+        local dirty = status ~= nil and status ~= ""
+        git({ "rev-parse", "--abbrev-ref", "HEAD" }, function(branch)
+            if not branch or branch == "" or branch == "HEAD" then
+                return cb(nil)
+            end
+            git({ "ls-remote", "origin", "refs/heads/" .. branch }, function(out)
+                local remote = out and out:match("^(%x+)")
+                if not remote then
+                    return cb(nil)
+                end
+                git({ "cat-file", "-e", remote .. "^{commit}" }, function(have)
+                    if have then
+                        return counts(remote .. "...HEAD", function(behind, ahead)
+                            cb({ behind = behind or 0, ahead = ahead or 0, dirty = dirty })
+                        end)
+                    end
+                    counts("origin/" .. branch .. "...HEAD", function(_, ahead)
+                        cb({ behind = "?", ahead = ahead or 0, dirty = dirty })
+                    end)
+                end)
+            end)
+        end)
+    end)
+end
+
 --- Whether an upstream update was detected for `name` (set by L.check_outdated).
 ---@param name string
 ---@return boolean
@@ -307,21 +363,26 @@ function L.is_outdated(name)
     return outdated[name] == true
 end
 
---- Asynchronously check which git-managed plugins have an upstream update.
+--- Asynchronously check which git-managed plugins have an upstream update, and how each dev checkout stands
+--- against its remote (L.check_local; a checkout behind it counts as outdated).
 --- Best-effort: compares local HEAD against the remote default branch (origin HEAD)
 --- via `git ls-remote`. Skips local dir= dev clones. Concurrency is capped.
 ---@param cb? fun(outdated_names: string[])
 ---@param on_progress? fun(done: integer, total: integer)
 ---@return nil
 function L.check_outdated(cb, on_progress)
-    ---@type { name: string, path: string }[]
+    ---@type { name: string, path: string, dir: boolean|nil }[]
     local targets = {}
     for name, reg in pairs(registry) do
-        -- Only git-managed installs (skip local dir= dev clones).
         if reg.path and not reg.dir then
             targets[#targets + 1] = { name = name, path = reg.path, version = reg.version }
+        elseif reg.dir and vim.fn.isdirectory(reg.dir .. "/.git") == 1 then
+            -- A dev checkout is the user's own repository: it is not updated from here, but how it stands
+            -- against its remote is reported (L.check_local).
+            targets[#targets + 1] = { name = name, path = reg.dir, dir = true }
         end
     end
+    local states = {}
 
     local total = #targets
     if total == 0 then
@@ -350,6 +411,7 @@ function L.check_outdated(cb, on_progress)
         end
         if done == total then
             outdated = result
+            local_states = states
             if cb then
                 vim.schedule(function()
                     cb(found)
@@ -360,6 +422,19 @@ function L.check_outdated(cb, on_progress)
 
     local start_next -- forward declaration
     local function check(t)
+        if t.dir then
+            return L.check_local(t.path, function(st)
+                if st then
+                    states[t.name] = st
+                    if st.behind == "?" or (tonumber(st.behind) or 0) > 0 then
+                        result[t.name] = true
+                        found[#found + 1] = t.name
+                    end
+                end
+                finish_one()
+                start_next()
+            end)
+        end
         -- Compare the installed HEAD to the remote tip of the TRACKED ref (the spec's
         -- branch/tag). A commit pin is a fixed SHA we can't ls-remote, so compare against
         -- the default branch tip instead: this only flags that a newer upstream commit

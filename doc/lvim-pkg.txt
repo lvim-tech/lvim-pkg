@@ -88,6 +88,11 @@ Fields (|LvimPkgConfig|):
   registry_ttl  integer     Seconds before a cached catalogue is re-fetched at
                             setup. 0 disables the age check. Default 7 days.
   max_concurrency integer   Packages installed in parallel per batch. Default 4.
+  idle_timeout    integer   ms an install command may run without writing
+                            anything before it is stopped as hung (SIGTERM,
+                            then SIGKILL). The clock restarts on every output,
+                            so a long build that reports is not cut short.
+                            0 = never. Default 600000 (10 min).
   extra_parsers table       Tree-sitter parsers the community catalogue does
                             not carry, keyed by language, in the registry's own
                             entry shape. Merged over the fetched catalogue and

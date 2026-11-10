@@ -6,30 +6,84 @@
 local M = {}
 
 --- Run a command asynchronously; `cb(err)` with err=nil on success.
+---
+--- A command that writes nothing for `config.idle_timeout` ms is stopped (SIGTERM, then SIGKILL) and reported
+--- as hung. The clock restarts on every chunk of output, so a long build that keeps reporting is never cut short.
 ---@param cmd  string[]
----@param opts { cwd?: string, env?: table<string,string> }|nil
+---@param opts { cwd?: string, env?: table<string,string>, idle_timeout?: integer }|nil
 ---@param cb   fun(err: string|nil)
 ---@return nil
 function M.run(cmd, opts, cb)
     opts = opts or {}
-    local ok, err = pcall(
-        vim.system,
-        cmd,
-        { cwd = opts.cwd, env = opts.env, text = true },
-        vim.schedule_wrap(function(res)
-            if res.code == 0 then
-                cb(nil)
-            else
-                local msg = (res.stderr ~= nil and res.stderr ~= "" and res.stderr)
-                    or res.stdout
-                    or ("exit " .. res.code)
-                cb(vim.trim(tostring(msg)))
-            end
-        end)
-    )
-    if not ok then
-        cb(tostring(err))
+    local idle = opts.idle_timeout
+    if idle == nil then
+        local ok_cfg, config = pcall(require, "lvim-pkg.config")
+        idle = ok_cfg and config.idle_timeout or 0
     end
+    local out, errs = {}, {}
+    local timer = (idle and idle > 0) and vim.uv.new_timer() or nil
+    local hung = false
+    local proc
+    local function stop_timer()
+        if timer and not timer:is_closing() then
+            timer:stop()
+            timer:close()
+        end
+    end
+    local function arm()
+        if timer and not timer:is_closing() then
+            timer:stop()
+            timer:start(idle, 0, function()
+                hung = true
+                pcall(function()
+                    proc:kill("sigterm")
+                end)
+                -- A process that ignores SIGTERM is killed outright a little later.
+                vim.defer_fn(function()
+                    pcall(function()
+                        if not proc:is_closing() then
+                            proc:kill("sigkill")
+                        end
+                    end)
+                end, 5000)
+            end)
+        end
+    end
+    local function collect(into)
+        return function(_, data)
+            if data then
+                into[#into + 1] = data
+                arm()
+            end
+        end
+    end
+    local ok, err = pcall(function()
+        proc = vim.system(
+            cmd,
+            { cwd = opts.cwd, env = opts.env, text = true, stdout = collect(out), stderr = collect(errs) },
+            vim.schedule_wrap(function(res)
+                stop_timer()
+                if hung then
+                    cb(("no output for %d min; stopped as hung: %s"):format(
+                        math.floor(idle / 60000 + 0.5),
+                        table.concat(cmd, " ")
+                    ))
+                elseif res.code == 0 then
+                    cb(nil)
+                else
+                    local stderr, stdout = table.concat(errs), table.concat(out)
+                    local msg = (stderr ~= "" and stderr) or (stdout ~= "" and stdout) or ("exit " .. res.code)
+                    cb(vim.trim(tostring(msg)))
+                end
+            end)
+        )
+    end)
+    if not ok then
+        stop_timer()
+        cb(tostring(err))
+        return
+    end
+    arm()
 end
 
 --- Download `url` to `dest` via curl.

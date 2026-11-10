@@ -69,6 +69,7 @@ require("lvim-pkg").setup({
     snapshot_dir = nil, -- version-snapshot dir (default: <config>/.snapshots)
     registry_ttl = 7 * 24 * 60 * 60, -- re-fetch a cached catalogue at setup once this old (0 = never)
     max_concurrency = 4, -- max packages installed in parallel per batch
+    idle_timeout = 600000, -- ms an install may run without output before it is stopped as hung (0 = never)
     -- Tree-sitter parsers the community catalogue does not carry, keyed by language, in the
     -- registry's own entry shape. Merged over the fetched catalogue and winning a name
     -- collision, so nothing downstream can tell them apart.

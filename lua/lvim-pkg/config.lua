@@ -13,6 +13,9 @@
 ---@field registry_ttl    integer       Seconds before a cached catalogue is re-downloaded at
 ---                                      setup. 0 (or less) disables the auto-refresh (fetch
 ---                                      only when the cache is missing). Default 7 days.
+---@field idle_timeout    integer       ms an install command may run WITHOUT writing anything before it is stopped as
+---                                      hung (0 = never). Measured from the last output, so a long build that keeps
+---                                      reporting is never cut short.
 ---@field max_concurrency integer       Maximum packages installed in parallel (per batch).
 ---                                      Default 4.
 ---@field extra_parsers   table<string, LvimPkgTsEntry>  Tree-sitter parsers the community
@@ -44,5 +47,8 @@ return {
     snapshot_dir = nil,
     registry_ttl = 7 * 24 * 60 * 60,
     max_concurrency = 4,
+    -- An install that writes nothing for this long is stopped as hung. Without it a stuck process (a registry
+    -- that never answered) kept its package "installing" forever, and every later attempt queued behind it.
+    idle_timeout = 10 * 60 * 1000,
     extra_parsers = {},
 }

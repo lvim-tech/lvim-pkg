@@ -121,11 +121,62 @@ local function head_rev(name)
     return sha
 end
 
+--- The root of the lvim-pack copy that is actually RUNNING — the one that answered `require("lvim-pack")`
+--- — or nil when there is no such loader.
+---@return string|nil
+function L.loader_dir()
+    local mod = package.loaded["lvim-pack"]
+    if type(mod) ~= "table" or type(mod.setup) ~= "function" then
+        return nil
+    end
+    local src = debug.getinfo(mod.setup, "S").source or ""
+    if src:sub(1, 1) ~= "@" then
+        return nil
+    end
+    -- <root>/lua/lvim-pack/init.lua
+    return vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fs.normalize(src:sub(2)))))
+end
+
+--- The loader describes itself as it is RUNNING. A host loads lvim-pack before it reads any spec, so a
+--- `dir=` entry for it (a dev override that matches every `lvim-*` checkout) never takes effect: the
+--- installed copy keeps running, while the list showed the checkout — "local", lazy, never loaded, and
+--- never checked for updates. An outdated loader was therefore invisible and could not be updated from
+--- the browser. The entry is rewritten to the running copy: loaded, eager, and git-managed when it is
+--- an installed clone (no `dir`), so the outdated check and Update reach it like any other plugin.
+---@param map table<string, LvimPkgPluginReg>
+local function describe_loader(map)
+    local dir = L.loader_dir()
+    if not dir then
+        return
+    end
+    local reg = map["lvim-pack"] or { repo = "lvim-tech/lvim-pack" }
+    local entry = {}
+    for k, v in pairs(reg) do
+        entry[k] = v
+    end
+    entry.repo = entry.repo or "lvim-tech/lvim-pack"
+    entry.src = entry.src or (GITHUB .. entry.repo)
+    entry.path = dir
+    entry.dir = nil
+    -- An installed clone lives in a package dir; anything else (a host that bootstraps the loader from a
+    -- checkout on purpose) stays a local dir.
+    if not dir:find("/pack/[^/]+/opt/lvim%-pack$") and not dir:find("/pack/[^/]+/start/lvim%-pack$") then
+        entry.dir = dir
+    end
+    entry.lazy = false
+    entry.dependency = false
+    entry.dep_of = nil
+    map["lvim-pack"] = entry
+    records["lvim-pack"] = records["lvim-pack"] or { reason = "plugin loader", time_ms = 0 }
+end
+
 --- Register the full plugin set (static spec info). Called once by the host loader.
 ---@param map table<string, LvimPkgPluginReg>
 ---@return nil
 function L.register(map)
     registry = map or {}
+    describe_loader(registry)
+    head_revs["lvim-pack"] = nil
 end
 
 --- Drop a plugin from the data store (after it has been removed from disk), so the
